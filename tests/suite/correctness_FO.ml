@@ -244,3 +244,19 @@ let () = declare "mode_checking_ho"
     mode_check expected "mode_checking_ho"
     ))
   ()
+
+(* TEST FUNCTIONALITY *)
+let () =
+  let status = Test.
+    [|Failure; Success; Failure; Success; Failure; 
+      Success; Failure; Failure; Failure; Failure;
+      Failure; Success; Failure; Failure; Success|] in
+  for i = 0 to Array.length status - 1 do
+    let name = Printf.sprintf "functionality/test%d.elpi" (i+1) in
+    let descr = Printf.sprintf "functionality%d" (i+1) in
+    declare descr
+    ~source_elpi:name
+    ~description:descr
+    ~expectation:status.(i)
+    ()
+  done

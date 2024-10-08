@@ -13,6 +13,21 @@ type prop typ.
 type forall (typ -> typ) -> typ. % polymorphic type declarations
 type ctype string -> typ.
 
+
+kind mode type. %%%%% modes %%%%%%
+type mode-fo prop -> mode. % prop is eaither true of false
+type mode-ho prop -> list mode -> mode.
+typeabbrev modes (list mode).
+
+kind term type.
+type app list term -> term.
+type lam (term -> term) -> term.
+type const string -> term.
+type cdata string -> term.
+type arg (term -> term) -> term.
+
+kind clause type.
+type clause ctype "Loc.t" -> list string -> term -> clause.
 % --------- utils  ---------------------------------------------------------
 
 type (`:) term -> typ -> entry.
@@ -36,7 +51,7 @@ warning Loc Msg :- print Loc "Warning:" Msg.
 
 pred assert i:prop, i:err.
 assert P _ :- P, !.
-assert P (type-err T Ty ETy) :- !,
+assert _ (type-err T Ty ETy) :- !,
   checking LOC,
   ppt Ty TyPP, ppt ETy ETyPP,
   if (TyPP = ETyPP) (term_to_string Ty TyS, term_to_string ETy ETyS) (TyS = TyPP, ETyS = ETyPP),
@@ -52,11 +67,13 @@ assert _ (wrong-arity T Ty A) :- !,
 pred stash-new i:A, i:B.
 stash-new E S :- open_safe E L, ( std.mem! L S ; stash_in_safe E S ), !.
 
+pred report-all-failures-if-no-success o:A, o:B.
 report-all-failures-if-no-success P RC :-
   new_safe E,
   (((pi ML\ error ML _ :- !, std.forall ML (stash-new E), fail) => P)
    ;
    (error {open_safe E} RC)).
+pred report-all-failures-and-fail-if-no-success o:A, o:B.
 report-all-failures-and-fail-if-no-success P RC :-
   new_safe E,
   (((pi ML\ error ML _ :- !, std.forall ML (stash-new E), fail) => P)
@@ -69,6 +86,7 @@ pp (lam F) T :- !, pi x\ term_to_string x XS, (pp x XS :- !) => pp (F x) T.
 pp (const "discard") "_" :- !.
 pp (const S) S :- !.
 pp (cdata X) S :- !, term_to_string X S.
+pp (arg A) R :- pi x\ pp (A x) Y, pp x X, R is "arg " ^ X ^ "\ " ^ Y.
 pp X XS :- term_to_string X XS.
 
 pred pp-list i:list term, o:string.
@@ -152,11 +170,12 @@ of-clause _ C :- of C TC, assert (unif TC prop) (type-err C TC prop).
 
 type checking (ctype "Loc.t") -> prop.
 
+pred log-tc-clause i:(ctype "Loc.t"), i:term.
 :if "DEBUG:CHECKER"
 log-tc-clause Loc Query :- !, print {trace.counter "run"} "typecheck" Loc Query.
 log-tc-clause _ _.
 
-pred typecheck i:list term, i:term, i:float, i:A, i:B.
+pred typecheck i:list clause, i:clause, i:float, i:A, i:B.
 typecheck P _ T0 NP _RC :- D is {gettimeofday} - T0, D > 10.0, !,
   print "[skipping" {std.length P} "clauses out of" NP "due to time limit]".
 
@@ -178,9 +197,11 @@ refresh (tconst "any") FRESH_ :- !.
 refresh X X.
 
 % mode (safe-dest-app i o o).
+pred safe-dest-app i:term, o:term, o:list term.
 safe-dest-app (app [X | A]) X A :- !.
 safe-dest-app X X [].
 
+pred collect-symbols-term i:term, i:A, o:A.
 collect-symbols-term N X X :- name N, !.
 collect-symbols-term (cdata _) X X :- !.
 collect-symbols-term (app []) X X :- !.
@@ -195,9 +216,11 @@ collect-symbols-term (const S) Acc Res :- !,
   if (std.string.map.mem S Acc) (Res = Acc)
      (checking Loc, std.string.map.add S Loc Acc Res).
 
+pred collect-symbols-clause i:clause, i:A, o:A.
 collect-symbols-clause (clause Loc _ C) Acc Res :-
   checking Loc => collect-symbols-term C Acc Res.
 
+pred collect-symbols-program i:list clause, i:A, o:A.
 collect-symbols-program [ C | P ] Acc Res :-
   collect-symbols-clause C Acc Acc1,
   collect-symbols-program P Acc1 Res.
@@ -233,7 +256,7 @@ warn-undeclared Known (pr ( S) LOC) tt :-
 
 pred forall_uto10 i:A, i:B, i:C.
 forall_uto10 [] _ _ :- !.
-forall_uto10 [X|XS] N P :- N < 10, !,
+forall_uto10 [X|XS] N P :- /*N < 10,*/ !,
   P X Done, !,
   if (Done = tt) (M is N + 1) (M = N),
   forall_uto10 XS M P.
@@ -247,6 +270,7 @@ under-decl-env [ X `: PT | XS ] P :-
   %print "Assume" X PT,
   (pi Ty\ of X Ty :- refresh PT Ty) => known X => under-decl-env XS P.
 
+pred under-undecl-env i:list (pair string A), i:prop.
 under-undecl-env [] P :- P.
 under-undecl-env [ pr X _ | XS ] P :-
   %print "Assume" X PT,
@@ -255,6 +279,7 @@ under-undecl-env [ pr X _ | XS ] P :-
 pred rm-known i:A, i:B, o:C.
 rm-known (const N `: _) S S1 :- std.string.map.remove N S S1.
 
+pred timing i:string, i:prop.
 :if "TIME:CHECKER"
 timing S P :- !, std.time P Time, print S Time.
 timing _ P :- P.
@@ -364,87 +389,29 @@ compile-type-abbreviations [(S `:= T)|TS] [Clause|Clauses] :-
   type->ppt-clause S [] T Clause,
   compile-type-abbreviations TS Clauses.
 
-macro @rigid-term :- (cdata "rigid-term").
+pred pp-var i:term, i:string, o:prop.
+pp-var V S R :- var V, !, R = (pi x\ pp x S :- var V, same_term x V, !).
 
-to-constant V :- V = @rigid-term.
-
-pred to-rigid-term i:term.
-to-rigid-term N :- name N, !.
-to-rigid-term V :- var V, !, to-constant V.
-to-rigid-term (cdata (uvar _ as V)) :- !, to-constant V.
-to-rigid-term (cdata _) :- !.
-to-rigid-term (app L) :- !, std.forall L to-rigid-term.
-to-rigid-term (lam F) :- !, pi x\ to-rigid-term (F x).
-to-rigid-term (const _) :- !.
-to-rigid-term A :- halt "Error in to-rigid-term" A.
-
-pred is-rigid-term i:term.
-is-rigid-term N :- name N, !.
-is-rigid-term V :- var V, !, fail.
-is-rigid-term (cdata (uvar _ as V)) :- !, to-constant V.
-is-rigid-term (cdata _) :- !.
-is-rigid-term (app L) :- !, std.forall L is-rigid-term.
-is-rigid-term (lam F) :- !, pi x\ is-rigid-term (F x).
-is-rigid-term (const _) :- !.
-is-rigid-term A :- halt "Error in is-rigid-term" A.
-
-pred build-mode i:list A, o:list bool.
-build-mode L R :- std.map L (x\r\ r = mode-fo false) R.
-
-pred add-no-modes o:list A, i:A.
-add-no-modes X T :- var X, !, X = [T|Y_], print "No mode for" T.
-add-no-modes [X|_] Y :- not (var X), X = Y, !.
-add-no-modes [X|Xs] T :- var Xs, !, print "No mode for" X, Xs = [T|Y_].
-add-no-modes [_|Xs] T :- !, add-no-modes Xs T.
-
-pred find-mode.aux i:A, i:B, i:C, i:D, o:E.
-find-mode.aux [] NoModes_ X _ _ :- fatal-no-mode, halt "Check-well-modes-negative: no mode for" X.
-find-mode.aux [] NoModes X Args R :- !, add-no-modes NoModes X, build-mode Args R .
-find-mode.aux [pr X R|_] _ X _ R :- !.
-find-mode.aux [_ | Xs] NoModes X Args R :- !, find-mode.aux Xs NoModes X Args R.
-
-pred find-mode i:A, i:B, o:C.
-find-mode X Args R :- modes Modes, no-modes NoModes, find-mode.aux Modes NoModes X Args R. 
-
-pred get-head-mode i:A, o:B.
+pred get-head-mode i:mode, o:prop.
 get-head-mode (mode-fo M) M :- !.
 get-head-mode (mode-ho M _) M :- !.
 
-pred set-head-mode i:A, i:B.
-set-head-mode Head Args :-
-  find-mode Head Args Mode, !,
-  if ({std.length Mode} = {std.length Args}) 
-    (std.forall2 Mode Args (m\t\ if (get-head-mode m true) (to-rigid-term t) true)) 
-    (print "Invalid mode length for (2)" Head Loc).
-set-head-mode _ _.
+macro @VDASH :- const ":-".
+macro @CUT :- const "!".
+macro @COMMA :- const ",".
+macro @PI :- const "pi".
+macro @SIGMA :- const "sigma".
+macro @IMPL :- const "=>".
 
-pred get-vars i:term, o:list string.
-get-vars N [] :- name N, !.
-get-vars (cdata _ as X) [] :- !.
-get-vars (app L) L'' :- !, std.map L get-vars L', std.flatten L' L''.
-get-vars (lam F) L :- !, pi x\ get-vars (F x) L.
-get-vars (const T) [] :- !.
-get-vars A [B] :- var A, !, pp A B.
-get-vars A _ :- halt "Error in get-vars" A.
-
-pred check-head-output i:A, i:B, i:C.
-check-head-output Head Args Loc :-
-  find-mode Head Args Mode, !, 
-  std.forall2 Mode Args (m\t\ sigma Vars\
-    std.assert! (get-vars t Vars) "Should not fail",
-    if (get-head-mode m true) true (if (Vars = []) true (
-      print "WARNING: The variables" Vars "are in output position of the predicate\"" Head "\"and cannot be ensured to be ground" Loc))).
-check-head-output _ _ _.
-
-pred variadic-mode i:A.
-variadic-mode (const "halt").
-variadic-mode (const "print").
-
-pred is-ho-predicate i:A.
-is-ho-predicate (@rigid-term).
-
-pred map-var o:A, i:string, o:prop.
-map-var V S R :- var V, !, R = (pp X S :- var V, same_term X V, !).
+pred head-symbol i:term, o:string.
+head-symbol uvar _ :- halt "NYI".
+head-symbol (arg Ag) S :- !, pi x\ head-symbol (Ag x) S.
+head-symbol (const C) C :- !.
+head-symbol (app [@VDASH, X | _]) S :- !, head-symbol X S.
+head-symbol (app [@PI, lam B]) S :- !, pi x\ head-symbol (B x) S.
+head-symbol (app [const C|_]) C :- !.
+head-symbol X Y :- name X, !, std.any->string X Y.
+head-symbol A _ :- halt "[head-symbol] uncaught branch" A.
 
 pred copy i:term, o:term.
 copy N N :- name N, !.
@@ -455,118 +422,444 @@ copy (const T) (const T) :- !.
 copy A A :- var A, !.
 copy A _ :- halt "Error in copy" A.
 
-pred check-args-mode i:D, o:A, i:B, i:C, i:prop, i:term.
-check-args-mode HD _ _ Loc Mode Arg :-
-  get-head-mode Mode ModeP,
-  ModeP, get-vars Arg L, not (L = []), !,
-  if (fatal-no-mode) (halt "WARNING: Not ground" Arg' "passed to" HD Loc) (print "WARNING: Not ground" {pp Arg} "passed to" {pp HD} Loc).
-% TODO: following rule aims to go under lambda which are args of a predicate
-%       however, this is gives a error if partial application is used
-% check-args-mode _ NoModes AllModes Loc Mode Arg :-
-%   Mode, Arg = lam L, !,
-%   print ("Going under lambda") Arg,
-%   pi x\ std.assert!(check-well-moded-negative NoModes AllModes Loc (L x)) "Should not fail".
-check-args-mode _ _ _ _ Mode Arg :- get-head-mode Mode ModeP, ModeP, !.
-check-args-mode _ _ _ _ Mode Arg :- get-head-mode Mode ModeP, not ModeP, to-rigid-term Arg.
+namespace modes {
+  pred get-mode i:string, o:modes.
+  
+  pred load-mode i:pair term modes, o:prop.
+  load-mode (pr (const T) M) (get-mode T M :- !).
 
-pred check-well-moded-negative i:A, i:B.
-check-well-moded-negative _        N :- name N, !.
-% check-well-moded-negative _        V :- var V, !, to-constant V.
-check-well-moded-negative _        (cdata (uvar _ as V)) :- !, to-constant V.
-check-well-moded-negative _        (cdata _) :- !.
-check-well-moded-negative Loc (app [const "," | L]) :- !,
-  std.forall L (x\ if (var x) ((fatal-no-mode, halt "WARNING: Passed flexible to ," Loc); print "WARNING: Passed flexible to ," Loc) 
-  (check-well-moded-negative Loc x)).
-check-well-moded-negative Loc (app [const "pi", lam B]) :- !,
-  pi x\ check-well-moded-negative Loc (B x).
-check-well-moded-negative Loc (app [const "=>", Hyp, Body]) :- !,
-  check-well-moded-positive Hyp Loc [],
-  check-well-moded-negative Loc Body.
-check-well-moded-negative _ (app [HD|_]) :- variadic-mode HD, !.
-check-well-moded-negative Loc (app [HD|Args]) :- !,
-  if (var HD) 
-    (if (fatal-no-mode) (halt "WARNING: Flex head symbol" HD "at" Loc) (print "WARNING: Flex head symbol" HD "at" Loc))
-    true,
-  find-mode HD Args Mode,
-  % print "Mode is" Mode,
-  if ({std.length Mode} = {std.length Args}) 
-    (std.forall2 Mode Args (x\y\std.assert!(check-args-mode HD NoModes AllModes Loc x y) "Mh")) 
-    (print "Invalid mode length for" HD Loc).
-check-well-moded-negative Loc (lam F) :- !, 
-  pi x\ check-well-moded-negative Loc (F x).
-check-well-moded-negative _       (const _ as _) :- !.
+  pred load-modes i:list (pair term modes), o:list prop.
+  load-modes L M :- std.map L load-mode M.
 
-pred check-well-moded-negative-list i:A, i:B.
-check-well-moded-negative-list [] _ :- !.
-check-well-moded-negative-list [X | Xs] Loc :-
-  check-well-moded-negative Loc X,
-  check-well-moded-negative-list Xs Loc.
+  pred build-mode i:list A, o:list mode.
+  build-mode L R :- std.map L (x\r\ r = mode-fo false) R.
 
-pred to-check i:A.
-to-check _ :- fail, !, true.
-% to-check "r1" :- !.
+  pred get-mode-safe i:term, i:list term, o:modes.
+  get-mode-safe uvar Args M :- build-mode Args M, !. 
+  get-mode-safe X _    M :- modes.get-mode {head-symbol X} M, !.
+  get-mode-safe _ Args M :- build-mode Args M, !. 
 
-pred check-well-moded-positive-ho-mode i:list term, i:list A, i:list term, i:B.
-check-well-moded-positive-ho-mode [A|As] [mode-fo X|Ms] Prem Loc :- !,
-  if X (to-rigid-term A) true, 
-  check-well-moded-positive-ho-mode As Ms Prem Loc.
-check-well-moded-positive-ho-mode [A|As] [mode-ho true M|Ms] Prem Loc :- var A, !,
-  pi x\ (pi X\ copy X x :- same_term X A, !) => std.map Prem copy (Prem' x), !, 
-  modes Modes,
-  (modes [pr x M | Modes] :- !) => check-well-moded-positive-ho-mode As Ms (Prem' x) Loc.
-check-well-moded-positive-ho-mode [_|As] [_|Ms] Prem Loc :- !,
-  check-well-moded-positive-ho-mode As Ms Prem Loc.
-check-well-moded-positive-ho-mode [] [] Prem Loc :- check-well-moded-negative-list Prem Loc.
+}
 
-% mode (check-well-moded-positive i i i i).
-pred check-well-moded-positive i:C, i:D, i:E.
-check-well-moded-positive X Loc _ :- var X, print "WARNING: Got uvar in check well-moded-positive" Loc.
-check-well-moded-positive (arg B) Loc [N|Names] :- !,
-  map-var X N P,
-  P => check-well-moded-positive (B X) Loc Names.
-check-well-moded-positive (const _) _ _ :- !.
-check-well-moded-positive (app [(const ":-"), (app [Head | Args]) | Prem]) Loc Names_ :-
-  % print "Checking mode positive of" Head Args ":-" Prem,
-  % set-head-mode Head Args,
-  find-mode Head Args Mode,
-  check-well-moded-positive-ho-mode Args Mode Prem Loc,
-  check-head-output Head Args Loc.
-check-well-moded-positive (app [(const ":-"), (const _) | Prem]) Loc Names_ :- !,
-   check-well-moded-negative-list Prem Loc.
-check-well-moded-positive (app [(const "pi"), lam B]) Loc Names :- !,
-  check-well-moded-positive (B X_) Loc Names.
-check-well-moded-positive (app [(const ",") | L]) Loc Names :- !,
-  std.forall L (x\ check-well-moded-positive x Loc Names).
-check-well-moded-positive (app ([const "::", A, L])) Loc Names :- !,
-  check-well-moded-positive A Loc Names,
-  check-well-moded-positive L Loc Names.
-check-well-moded-positive (app _ as App) Loc Names :- !, 
-  check-well-moded-positive (app [(const ":-"), App]) Loc Names.
-check-well-moded-positive (@rigid-term) _ _ :- !.
-check-well-moded-positive A _ _ :- halt "check-well-moded-positive: Uncaught branch in" A.
+namespace mode-checking {
+  shorten modes.{get-mode-safe}.
 
-pred head-symbol i:term, o:string.
-head-symbol (arg Ag) S :- pi x\ head-symbol (Ag x) S.
-head-symbol (const C) C.
-head-symbol (app [const ":-", X | _]) S :- !, head-symbol X S.
-head-symbol (app [const C|L]) C.
+  macro @rigid-term :- (const "rigid-term").
 
-pred check-well-moded-prog i:A.
-check-well-moded-prog [] :- !.
-check-well-moded-prog [clause Loc Vars Body | Tl] :-
-  if (to-check {head-symbol Body})
-    (check-well-moded-positive Body Loc Vars) true,
-  check-well-moded-prog Tl.
+  pred loc o:(ctype "Loc.t").
+  pred to-constant i:term.
+  to-constant V :- V = @rigid-term.
 
-check-overlapping-prog [] _ :- !.
+  pred to-rigid-term i:term.
+  to-rigid-term T :- (pi x\ copy x _ :-  var x, !, to-constant x) => copy T _.
+
+  pred is-rigid-term i:term.
+  to-rigid-term T :- (pi x\ copy x _ :-  var x, !, fail) => copy T _.
+
+  pred set-head-mode i:term, i:list term.
+  set-head-mode Head Args :-
+    get-mode-safe Head Args Mode, !,
+    loc Loc,
+    if ({std.length Mode} = {std.length Args}) 
+      (std.forall2 Mode Args (m\t\ if (get-head-mode m true) (to-rigid-term t) true)) 
+      (print "Invalid mode length for (2)" Head Loc).
+  set-head-mode _ _.
+
+  pred get-vars i:term, o:list string.
+  get-vars N [] :- name N, !.
+  get-vars (cdata _) [] :- !.
+  get-vars (const _) [] :- !.
+  get-vars (app L) L'' :- !, std.map L get-vars L', std.flatten L' L''.
+  get-vars (lam F) L :- !, pi x\ get-vars (F x) L.
+  get-vars A [B] :- var A, !, pp A B.
+  get-vars A _ :- halt "Error in get-vars" A.
+
+  pred check-head-output i:term, i:list term.
+  check-head-output Head Args :-
+    get-mode-safe Head Args Mode, !, 
+    loc Loc, pp Head HeadS,
+    std.forall2 Mode Args (m\t\ sigma Vars\
+      std.assert! (get-vars t Vars) "Should not fail",
+      if (get-head-mode m true; Vars = []) true (
+        print "WARNING: The variables" Vars "are in output position of the predicate\"" HeadS 
+          "\"and cannot be ensured to be ground" Loc)).
+  check-head-output _ _.
+
+  pred variadic-mode i:term.
+  variadic-mode (const "halt").
+  variadic-mode (const "print").
+
+  pred is-ho-predicate i:term.
+  is-ho-predicate (@rigid-term).
+
+  pred check-args-mode i:term, i:mode, i:term.
+  check-args-mode HD Mode Arg :-
+    get-head-mode Mode true, 
+    get-vars Arg L, not (L = []), !,
+    print "WARNING: Not ground" {pp Arg} "passed to" {pp HD} {loc}.
+  % TODO: following rule aims to go under lambda which are args of a predicate
+  %       however, this is gives a error if partial application is used
+  % check-args-mode _ Loc Mode Arg :-
+  %   Mode, Arg = lam L, !,
+  %   print ("Going under lambda") Arg,
+  %   pi x\ std.assert!(check-well-moded-negative Loc (L x)) "Should not fail".
+  check-args-mode _ Mode _   :- get-head-mode Mode true, !.
+  check-args-mode _ Mode Arg :- get-head-mode Mode false, to-rigid-term Arg.
+
+  pred check-well-moded-negative i:term.
+  check-well-moded-negative N :- name N, !.
+  check-well-moded-negative (cdata _) :- !.
+  check-well-moded-negative (const _) :- !.
+  check-well-moded-negative (app [@COMMA | L]) :- !,
+    loc Loc,
+    std.forall L (x\ 
+      if (var x) 
+        (print "WARNING: Passed flexible to ," Loc) 
+        (check-well-moded-negative x)).
+  check-well-moded-negative (app [@PI, lam B]) :- !,
+    pi x\ check-well-moded-negative (B x).
+  check-well-moded-negative (app [@IMPL, Hyp, Body]) :- !,
+    check-well-moded-positive Hyp [],
+    check-well-moded-negative Body.
+  check-well-moded-negative (app [HD|_]) :- variadic-mode HD, !.
+  check-well-moded-negative (app [HD|Args]) :- !,
+    if (var HD) (print "WARNING: Flex head symbol" HD "at" {loc}) true,
+    get-mode-safe HD Args Mode,
+    if ({std.length Mode} = {std.length Args}) 
+      (std.forall2 Mode Args (x\y\std.assert!(check-args-mode HD x y) "Mh")) 
+      (print "Invalid mode length for" HD {loc}).
+  check-well-moded-negative (lam F) :- !, 
+    pi x\ check-well-moded-negative (F x).
+
+  pred check-well-moded-negative-list i:list term.
+  check-well-moded-negative-list [] :- !.
+  check-well-moded-negative-list [X | Xs] :-
+    check-well-moded-negative X,
+    check-well-moded-negative-list Xs.
+
+  pred to-check i:string.
+  to-check _ :- false, !.
+
+  pred check-well-moded-positive-ho-mode i:list term, i:list mode, i:list term.
+  check-well-moded-positive-ho-mode [A|As] [mode-fo X|Ms] Prem :- !,
+    if X (to-rigid-term A) true, 
+    check-well-moded-positive-ho-mode As Ms Prem.
+  check-well-moded-positive-ho-mode [A|As] [mode-ho true M|Ms] Prem :- var A, !,
+    pi x\ (pi X\ copy X x :- same_term X A, !) => std.map Prem copy (Prem' x), !, 
+    head-symbol x HS,
+    modes.get-mode HS M =>
+    check-well-moded-positive-ho-mode As Ms (Prem' x).
+  check-well-moded-positive-ho-mode [_|As] [_|Ms] Prem :- !,
+    check-well-moded-positive-ho-mode As Ms Prem.
+  check-well-moded-positive-ho-mode [] [] Prem :- check-well-moded-negative-list Prem.
+
+  pred check-well-moded-positive i:term, i:list string.
+  check-well-moded-positive uvar _ :- !, 
+    print "WARNING: Got uvar in check well-moded-positive" {loc}.
+  check-well-moded-positive (arg B) [N|Names] :- !,
+    pp-var X N P, P => check-well-moded-positive (B X) Names.
+  check-well-moded-positive (const _) _ :- !.
+  check-well-moded-positive (app [@VDASH, (app [Head | Args]) | Prem]) Names_ :-
+    check-well-moded-positive-ho-mode Args {get-mode-safe Head Args} Prem,
+    check-head-output Head Args.
+  check-well-moded-positive (app [@VDASH, (const _) | Prem]) Names_ :- !,
+    check-well-moded-negative-list Prem.
+  check-well-moded-positive (app [@PI, lam B]) Names :- !,
+    check-well-moded-positive (B FRESH_) Names.
+  check-well-moded-positive (app [@COMMA | L]) Names :- !,
+    std.forall L (x\ check-well-moded-positive x Names).
+  check-well-moded-positive (app ([const "::", A, L])) Names :- !,
+    check-well-moded-positive A Names,
+    check-well-moded-positive L Names.
+  check-well-moded-positive (app _ as App) Names :- !, 
+    check-well-moded-positive (app [@VDASH, App]) Names.
+  check-well-moded-positive A _ :- 
+    halt "[check-well-moded-positive] uncaught branch" A.
+
+  pred check-well-moded-prog i:A.
+  check-well-moded-prog [] :- !.
+  check-well-moded-prog [clause Loc Vars Body | Tl] :- 
+    to-check {head-symbol Body}, !,
+    loc Loc => check-well-moded-positive Body Vars,
+    check-well-moded-prog Tl.
+  check-well-moded-prog [_ | Tl] :- 
+    check-well-moded-prog Tl.
+}
+
+
+pred mem= i:list A, i:A.
+mem= [A|_] B :- same_term A B, !.
+mem= [_|A] B :- mem= A B.
+
+namespace functionality {
+  shorten modes.{get-mode-safe}.
+
+  % Add the name of functional predicates by hand
+  pred is-functional o:string.
+  is-functional "=".
+
+  pred pred-map i:string, o:clause.
+
+  pred loc1 o:(ctype "Loc.t"). 
+  pred loc2 o:(ctype "Loc.t"). 
+
+  type func bool -> term.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%% AUXILIARY FUNCTIONS %%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  pred rev_map i:list A, i:(pred i:A, o:B), o:list B.
+  rev_map L F R :- rev_map.aux L F [] R.
+  
+  pred rev_map.aux i:list A, i:(pred i:A, o:B), i:list B, o:list B.
+  rev_map.aux [] _ L L.
+  rev_map.aux [A|As] F L L' :- F A B, !, rev_map.aux As F [B|L] L'.
+
+  pred load-functional-prop i:term, o:prop.
+  load-functional-prop (const P) (is-functional P) :- !.
+  load-functional-prop A _ :- halt "Only const can be passed to pred load_functional_prop. Received" A.
+
+  pred load-functional-props i:list term, o:list prop.
+  load-functional-props L S :- std.map L load-functional-prop S.
+
+  pred normalize-term.aux i:term, o:term.
+  normalize-term.aux (app [@VDASH | _] as A) A :- !.
+  normalize-term.aux (const _ as A) (app [@VDASH, A]) :- !.
+  normalize-term.aux (app _ as A) (app [@VDASH, A]) :- !.
+  normalize-term.aux A _ :- halt "[normalize-term.aux] Unexpected branch" A.
+
+  pred flatten-commas i:list term, o:list term. % STOP HERE
+  flatten-commas [] [].
+  flatten-commas [app[@COMMA|L]|TL] R :- !,
+    flatten-commas L L1,
+    flatten-commas TL L2,
+    std.append L1 L2 R.
+  flatten-commas [A|As] [A|As'] :- !, flatten-commas As As'.
+
+  pred normalize-term i:term, o:term, o:list term.
+  normalize-term A HD TL' :-
+    std.assert!(normalize-term.aux A (app [@VDASH, HD | TL])) "[normalize-term] fail1",
+    std.assert!(flatten-commas TL TL') "[normalize-term] fail2".
+
+  pred build-pred-map i:pair string (list clause), o:list prop.
+  build-pred-map (pr _ []) [].
+  build-pred-map (pr A [X|Xs]) [pred-map A X|L] :- build-pred-map (pr A Xs) L.
+
+  pred program2pred_buckets i:list clause, i:std.string.map (list clause), o:list prop, o:list (list clause).
+  program2pred_buckets [] B C D :- 
+    std.string.map.bindings B L', 
+    std.map L' build-pred-map C', std.flatten C' C,
+    std.map L' (x\r\ sigma A B Br\ x = pr A B, std.rev B Br, r = pr A Br) L,
+    std.map L snd D.
+  program2pred_buckets [Cl|As] B C D :-
+    Cl = clause _ _ A,
+    head-symbol A K, is-functional K, !,
+    (std.string.map.find K B V; V = []), !,
+    std.string.map.add K [Cl|V] B B1,
+    program2pred_buckets As B1 C D.
+  program2pred_buckets [_|As] B C D :- program2pred_buckets As B C D.
+
+  pred go-under-arg.aux i:list string, i:term, i:(pred i:term, i:list term).
+  go-under-arg.aux [N|Ns]  (arg B) F :- !,
+    pp-var Fresh N PP,
+    PP => go-under-arg.aux Ns (B Fresh) F.
+  go-under-arg.aux _  (app [@PI, lam B]) F :- !, 
+    go-under-arg.aux [] (B Fresh_) F.
+  go-under-arg.aux []      T       F :- !, 
+    std.assert!(normalize-term T HD TL) "[normalize-term] should not fail", !,
+    F HD TL.
+  go-under-arg.aux A B _ :- halt "[go-under-arg.aux] should not fail..." A B.
+
+  pred go-under-term i:term, i:(pred i:term, i:list term).
+  go-under-term A F :- go-under-arg.aux [] A F. 
+
+  pred go-under-arg i:(pred o:A), i:clause, i:(pred i:term, i:list term).
+  go-under-arg LocP (clause Loc Names T) Cont :-
+    (LocP Loc :- !) => go-under-arg.aux Names T Cont.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%% CHECK OVERLAPPING HEADS %%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  pred overlapping-terms i:term, i:term.
+  overlapping-terms uvar _ :- !.
+  overlapping-terms _ uvar :- !.
+  overlapping-terms X X :- name X.
+  overlapping-terms (app X) (app Y) :- !, std.forall2 X Y overlapping-terms.
+  overlapping-terms (lam X) (lam Y) :- !, pi x\ overlapping-terms (X x) (Y x).
+  overlapping-terms (const X) (const X) :- !.
+  overlapping-terms (cdata X) (cdata X) :- !.
+
+  pred overlapping-head.aux i:modes, i:list term, i:list term.
+  overlapping-head.aux [M|Ms] [A|As] [B|Bs]  :- get-head-mode M true, !,
+    if (overlapping-terms A B) true (overlapping-head.aux Ms As Bs).
+  overlapping-head.aux [_|Ms] [_|As] [_|Bs] :- overlapping-head.aux Ms As Bs.
+
+  pred overlapping-head i:term, i:term. % Takes 2 heads
+  overlapping-head (app[A|As]) (app[B|Bs]) :- !,
+    head-symbol A Ahs, head-symbol B Bhs, Ahs = Bhs, !,
+    get-mode-safe A As M, overlapping-head.aux M As Bs, !.
+  overlapping-head A B :- halt "[overlapping-head] uncaught branch" A B.
+
+  pred cut-in-antecedent i:list term. % Takes the body
+  cut-in-antecedent L :- mem= L @CUT, !.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%% CHECK FUNCTIONAL BODY %%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % [partition-cut L A B] if L = [p1, ..., pm, !, pn, ..., po] then
+  %                          A = [p1, ..., pm] and B = [pn, ..., po]
+  pred partition-cut i:list term, o:list term, o:list term.
+  partition-cut [] [] [] :- !.
+  partition-cut [@CUT|L] [] L :- !.
+  partition-cut [A|B] [A|As] Bs :- partition-cut B As Bs. 
+
+  pred split-functional-ctx i:list term, o:list term, o:list term.
+  split-functional-ctx L Bef Aft :- 
+    partition-cut {std.rev L} A B,
+    std.rev B Bef, std.rev A Aft, !.
+  split-functional-ctx _ _ _ :- halt "[split-functional-ctx] should not fail...".
+
+  % THIS IS UNUSED, IN FAVOUR OF functional-dependecies
+  pred functional-premise i:term.
+  % BASE CASES
+  functional-premise (cdata _) :- !.
+  functional-premise (const _) :- !.
+  functional-premise (uvar) :- halt "[functional-premise] found uvar..." {loc1}.
+  % APP CASES
+  functional-premise (app [@PI, lam B]) :- !, pi x\ functional-premise (B x).
+  functional-premise (app [@SIGMA, lam B]) :- !, functional-premise (B X_).
+  functional-premise (app [@IMPL, Hyp | Body]) :- % Hyp if functional
+    head-symbol Hyp HypH, is-functional HypH, !,
+    Clause = clause {loc1} [] Hyp,
+    std.findall (pred-map HypH _) ClausesL,
+    std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
+    pred-map HypH Clause =>  (
+      check-functionality-clause-clauses Clause Clauses,
+      std.forall Body functional-premise).
+  functional-premise (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
+    std.forall Body functional-premise.
+  functional-premise (app [@COMMA|L]) :- !, std.forall L functional-premise.
+  functional-premise (app [const C | _]) :- % The premise is functional
+    is-functional C, !.
+  functional-premise (app [(const _ as H) | L]) :- % The premise mode are all input
+    std.forall {get-mode-safe H L} (x\ get-head-mode x true), !.
+  functional-premise A :- halt "[functional-premise] uncaught branch" A {loc1}.
+
+  %%
+  %% FUNCTIONAL DEPENDENCIES
+  %%
+  pred set-functional-output i:mode, i:term.
+  set-functional-output M T :- get-head-mode M false, !, % The output mode set T to functional
+    (pi X\ copy (uvar as X) _ :- !, X = func tt) =>
+    (pi X\ copy (func X) _ :- !, X = tt) => copy T _.
+  set-functional-output _ _.
+
+  pred set-non-functional-output i:term.
+  set-non-functional-output T :-
+    (pi X Y\ copy (uvar as X) _ :- !, X = func Y) => copy T _.
+
+  pred functional-dependencies i:term.
+  % BASE CASES
+  functional-dependencies (cdata _) :- !.
+  functional-dependencies (const _) :- !.
+  functional-dependencies (func  _) :- !.
+  functional-dependencies (uvar) :- halt "[functional-dependencies] found uvar..." {loc1}.
+  % APP CASES
+  functional-dependencies (app [@PI, lam B]) :- !, pi x\ functional-dependencies (B x).
+  functional-dependencies (app [@SIGMA, lam B]) :- !, functional-dependencies (B X_).
+  functional-dependencies (app [@IMPL, Hyp | Body]) :- % Hyp if functional
+    head-symbol Hyp HypH, is-functional HypH, !,
+    Clause = clause {loc1} [] Hyp,
+    std.findall (pred-map HypH _) ClausesL,
+    std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
+    pred-map HypH Clause =>  (
+      check-functionality-clause-clauses Clause Clauses,
+      std.forall Body functional-dependencies).
+  functional-dependencies (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
+    std.forall Body functional-dependencies.
+  functional-dependencies (app [@COMMA|L]) :- !, std.forall L functional-dependencies.
+  functional-dependencies (app [(const Cs as C) | L]) :- % The premise is functional
+    (all-funct; is-functional Cs), !,
+    std.forall2 {get-mode-safe C L} L set-functional-output.
+  functional-dependencies (app [(const _ as C) | L]) :- !, % The premise is not functional
+    std.forall L set-non-functional-output.
+  functional-dependencies A :- halt "[functional-dependencies] uncaught branch" A {loc1}.
+
+  pred all-funct.
+
+  pred functional-body i:term, i:list term.
+
+  % ALL PREMISES AFTER THE LAST CUT SHOULD BE FUNCTIONAL
+  % functional-body _ L :- % PROPOSITION 3.4
+  %   split-functional-ctx L Bef_ Aft, 
+  %   std.forall Aft functional-premise.
+
+  pred head-is-functional i:term.
+  head-is-functional T :- (copy (func uvar) _ :- !, fail) => copy T _.
+
+  functional-body H L :- 
+    split-functional-ctx L Bef Aft,
+    all-funct => std.forall Bef functional-dependencies,
+    std.forall Aft functional-dependencies,
+    print H L,
+    not(head-is-functional H),
+    halt "[head-is-functional] the head of" {pp H} "cannot be guess to be functional..." {loc1}.
+  functional-body _ _.
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%% MAIN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  pred check-functionality-term-term i:term, i:list term, i:term, i:list term.
+  check-functionality-term-term AH ABo BH BBo :-
+    overlapping-head AH BH,
+    halt "Clause" {pp (app [@VDASH, AH | ABo])} "overlaps with" 
+                  {pp (app [@VDASH, BH | BBo])} "at" {loc1} "and" {loc2}.
+
+  pred check-functionality-term-clauses i:term, i:list term, i:list clause.
+  check-functionality-term-clauses _ _ [].
+  check-functionality-term-clauses A ABo [Clause|_] :- % PROPOSITION 3.7
+    go-under-arg loc2 Clause (check-functionality-term-term A ABo).
+  check-functionality-term-clauses A ABo [_|Bs] :-
+    check-functionality-term-clauses A ABo Bs. 
+
+  pred check-functionality-clauses-term i:list clause, i:term, i:list term.
+  check-functionality-clauses-term Clauses HD TL :-
+    Msg is ("Body of " ^ {pp HD} ^ ":-" ^ {pp-list TL} ^ " is not functional"),
+    std.assert! (functional-body HD TL) Msg,
+    if (cut-in-antecedent TL) % PROPOSITION 3.6
+        true
+        (check-functionality-term-clauses HD TL Clauses).
+  
+  pred check-functionality-clause-clauses i:clause, i:list clause.
+  check-functionality-clause-clauses Clause Clauses :-
+    go-under-arg loc1 Clause (check-functionality-clauses-term Clauses).
+
+  pred check-functionality-list i:list clause.
+  check-functionality-list [].
+  check-functionality-list [Clause|Clauses] :-
+    check-functionality-clause-clauses Clause Clauses,
+    check-functionality-list Clauses. 
+
+  pred check-functionality i:list clause.
+  check-functionality Program :-
+    program2pred_buckets Program {std.string.map.empty} ProgramProps ProgramClauses,
+    (pi x\ copy (func _ as x) x :- !) =>
+      ProgramProps => std.forall ProgramClauses check-functionality-list.
+}
 
 pred check i:A, i:B, i:C, i:D, i:E, i:F.
 :name "check:main"
-check P Q DeclaredTypes TypeAbbreviations Modes _FuncPred :-
+check P Q DeclaredTypes TypeAbbreviations Modes FuncPred :-
   compile-type-abbreviations TypeAbbreviations Abbrevs,
   Abbrevs => typecheck-program P Q DeclaredTypes RC, !,
   warn-linear P, !,
   if (var RC) (true) (fail),
-  (modes Modes, no-modes NoModes_) => check-well-moded-prog P.
+  modes.load-modes Modes ModesP,
+  functionality.load-functional-props FuncPred FuncP,
+  ModesP => FuncP => (
+    functionality.check-functionality P,
+    mode-checking.check-well-moded-prog P),
+  true
+  .
 
 % vim: set ft=lprolog:

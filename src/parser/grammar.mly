@@ -176,7 +176,7 @@ chr_rule:
 pred:
 | attributes = attributes; PRED;
   name = constant; args = separated_list(option(CONJ),pred_item) {
-   { Type.loc=loc $sloc; name; attributes; ty = TPred ([], args) }
+   { Type.loc=loc $sloc; name; attributes; ty = TPred (attributes, args) }
  }
 pred_item:
 | io = IO_COLON; ty = type_term { (mode_of_IO io,ty) }

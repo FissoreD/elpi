@@ -1266,7 +1266,8 @@ let type_expression_of_ast loc ~depth:arg_lvl macro state ast =
       let state, a = aux lvl state a in
       let state, b = aux lvl state b in
       state, TArr(a, b)
-    | TPred (_functional,l) -> (* TODO: @FissoreD _functionanlity should be taken into account *) 
+    | TPred (functional,l) ->
+      let is_functional = List.mem Ast.Functional functional in
       let rec aux' state = function
       | [] -> state, []
       | (m,t) :: xs -> 
@@ -1274,7 +1275,7 @@ let type_expression_of_ast loc ~depth:arg_lvl macro state ast =
           let state, l = aux' state xs in
           state, ((to_mode m,t)::l) in
       let state, mode_type = aux' state l in
-      state, TPred (false, mode_type) (* TODO: @FissoreD false should be replaced wrt _functional  *)
+      state, TPred (is_functional, mode_type)
   in
   aux arg_lvl state ast
 

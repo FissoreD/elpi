@@ -266,9 +266,10 @@ program: COLON VDASH
 program: COLON REPLACE VDASH
 program: COLON INDEX LPAREN FRESHUV RPAREN VDASH
 
-Attribute expected. Examples:
-:name "some name"
-:index (_ 1 1)
+Attribute expected. Accepted attributed are
+:[name|before|after|remove] "some name"
+:index [Hash|Map|DTree]? (_ 1 1)
+:functional
 
 program: COLON NAME VDASH
 
