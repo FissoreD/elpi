@@ -633,197 +633,265 @@ namespace functionality {
   pred loc2 o:(ctype "Loc.t"). 
 
   type func bool -> term. % Used by old1 and old2
-  type v bool -> term -> term. 
+  type v term -> bool -> term. 
 
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%%%% AUXILIARY FUNCTIONS %%%%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  pred rev_map i:list A, i:(pred i:A, o:B), o:list B.
-  rev_map L F R :- rev_map.aux L F [] R.
-  
-  pred rev_map.aux i:list A, i:(pred i:A, o:B), i:list B, o:list B.
-  rev_map.aux [] _ L L.
-  rev_map.aux [A|As] F L L' :- F A B, !, rev_map.aux As F [B|L] L'.
+  { % AUX
+    pred rev_map i:list A, i:(pred i:A, o:B), o:list B.
+    rev_map L F R :- rev_map.aux L F [] R.
+    
+    pred rev_map.aux i:list A, i:(pred i:A, o:B), i:list B, o:list B.
+    rev_map.aux [] _ L L.
+    rev_map.aux [A|As] F L L' :- F A B, !, rev_map.aux As F [B|L] L'.
 
-  pred load-functional-prop i:(pair term (list functionality)), o:prop.
-  load-functional-prop (pr (@c P) L) (is-functional (@c P) L) :- !.
-  load-functional-prop A _ :- halt "Only const can be passed to pred load_functional_prop. Received" A.
+    pred load-functional-prop i:(pair term (list functionality)), o:prop.
+    load-functional-prop (pr (@c P) L) (is-functional (@c P) L) :- !.
+    load-functional-prop A _ :- halt "Only const can be passed to pred load_functional_prop. Received" A.
 
-  pred load-functional-props i:list (pair term (list functionality)), o:list prop.
-  load-functional-props L S :- std.map L load-functional-prop S.
+    pred load-functional-props i:list (pair term (list functionality)), o:list prop.
+    load-functional-props L S :- std.map L load-functional-prop S.
 
-  pred normalize-term.aux i:term, o:term.
-  normalize-term.aux (app [@VDASH | _] as A) A :- !.
-  normalize-term.aux (const _ as A) (app [@VDASH, A]) :- !.
-  normalize-term.aux (app _ as A) (app [@VDASH, A]) :- !.
-  normalize-term.aux A _ :- halt "[normalize-term.aux] Unexpected branch" A.
+    pred normalize-term.aux i:term, o:term.
+    normalize-term.aux (app [@VDASH | _] as A) A :- !.
+    normalize-term.aux (const _ as A) (app [@VDASH, A]) :- !.
+    normalize-term.aux (app _ as A) (app [@VDASH, A]) :- !.
+    normalize-term.aux A _ :- halt "[normalize-term.aux] Unexpected branch" A.
 
-  pred flatten-commas i:list term, o:list term. % STOP HERE
-  flatten-commas [] [].
-  flatten-commas [app[@COMMA|L]|TL] R :- !,
-    flatten-commas L L1,
-    flatten-commas TL L2,
-    std.append L1 L2 R.
-  flatten-commas [A|As] [A|As'] :- !, flatten-commas As As'.
+    pred flatten-commas i:list term, o:list term. % STOP HERE
+    flatten-commas [] [].
+    flatten-commas [app[@COMMA|L]|TL] R :- !,
+      flatten-commas L L1,
+      flatten-commas TL L2,
+      std.append L1 L2 R.
+    flatten-commas [A|As] [A|As'] :- !, flatten-commas As As'.
 
-  pred normalize-term i:term, o:term, o:list term.
-  normalize-term A HD TL' :-
-    std.assert!(normalize-term.aux A (app [@VDASH, HD | TL])) "[normalize-term] fail1",
-    std.assert!(flatten-commas TL TL') "[normalize-term] fail2".
+    pred normalize-term i:term, o:term, o:list term.
+    normalize-term A HD TL' :-
+      std.assert!(normalize-term.aux A (app [@VDASH, HD | TL])) "[normalize-term] fail1",
+      std.assert!(flatten-commas TL TL') "[normalize-term] fail2".
 
-  pred build-pred-map i:pair string (list clause), o:list prop.
-  build-pred-map (pr _ []) [].
-  build-pred-map (pr A [X|Xs]) [pred-map A X|L] :- build-pred-map (pr A Xs) L.
+    pred build-pred-map i:pair string (list clause), o:list prop.
+    build-pred-map (pr _ []) [].
+    build-pred-map (pr A [X|Xs]) [pred-map A X|L] :- build-pred-map (pr A Xs) L.
 
-  pred program2pred_buckets i:list clause, i:std.string.map (list clause), o:list prop, o:list (list clause).
-  program2pred_buckets [] B C D :- 
-    std.string.map.bindings B L', 
-    std.map L' build-pred-map C', std.flatten C' C,
-    std.map L' (x\r\ sigma A B Br\ x = pr A B, std.rev B Br, r = pr A Br) L,
-    std.map L snd D.
-  program2pred_buckets [Cl|As] B C D :-
-    Cl = clause _ _ A,
-    head-symbol A K, is-functional (const K) _, !,
-    (std.string.map.find K B V; V = []), !,
-    std.string.map.add K [Cl|V] B B1,
-    program2pred_buckets As B1 C D.
-  program2pred_buckets [_|As] B C D :- program2pred_buckets As B C D.
+    pred program2pred_buckets i:list clause, i:std.string.map (list clause), o:list prop, o:list (list clause).
+    program2pred_buckets [] B C D :- 
+      std.string.map.bindings B L', 
+      std.map L' build-pred-map C', std.flatten C' C,
+      std.map L' (x\r\ sigma A B Br\ x = pr A B, std.rev B Br, r = pr A Br) L,
+      std.map L snd D.
+    program2pred_buckets [Cl|As] B C D :-
+      Cl = clause _ _ A,
+      head-symbol A K, is-functional (const K) _, !,
+      (std.string.map.find K B V; V = []), !,
+      std.string.map.add K [Cl|V] B B1,
+      program2pred_buckets As B1 C D.
+    program2pred_buckets [_|As] B C D :- program2pred_buckets As B C D.
 
-  pred go-under-arg.aux i:list string, i:term, i:(pred i:term, i:list term).
-  go-under-arg.aux [N|Ns]  (arg B) F :- !,
-    pp-var Fresh N PP,
-    PP => go-under-arg.aux Ns (B Fresh) F.
-  go-under-arg.aux _  (app [@PI, lam B]) F :- !, 
-    go-under-arg.aux [] (B Fresh_) F.
-  go-under-arg.aux []      T       F :- !, 
-    std.assert!(normalize-term T HD TL) "[normalize-term] should not fail", !,
-    F HD TL.
-  go-under-arg.aux A B _ :- halt "[go-under-arg.aux] should not fail..." A B.
+    pred go-under-arg.aux i:list string, i:term, i:(pred i:term, i:list term).
+    go-under-arg.aux [N|Ns]  (arg B) F :- !,
+      pp-var Fresh N PP,
+      PP => go-under-arg.aux Ns (B Fresh) F.
+    go-under-arg.aux _  (app [@PI, lam B]) F :- !, 
+      go-under-arg.aux [] (B Fresh_) F.
+    go-under-arg.aux []      T       F :- !, 
+      std.assert!(normalize-term T HD TL) "[normalize-term] should not fail", !,
+      F HD TL.
+    go-under-arg.aux A B _ :- halt "[go-under-arg.aux] should not fail..." A B.
 
-  pred go-under-term i:term, i:(pred i:term, i:list term).
-  go-under-term A F :- go-under-arg.aux [] A F. 
+    pred go-under-term i:term, i:(pred i:term, i:list term).
+    go-under-term A F :- go-under-arg.aux [] A F. 
 
-  pred go-under-arg i:(pred o:A), i:clause, i:(pred i:term, i:list term).
-  go-under-arg LocP (clause Loc Names T) Cont :-
-    (LocP Loc :- !) => go-under-arg.aux Names T Cont.
+    pred go-under-arg i:(pred o:A), i:clause, i:(pred i:term, i:list term).
+    go-under-arg LocP (clause Loc Names T) Cont :-
+      (LocP Loc :- !) => go-under-arg.aux Names T Cont.
+
+    pred var2v i:term, o:term.
+    var2v T R :-
+      (pi X Y\ copy (uvar as X) (v X Y) :- !) => copy T R.
+  }
 
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%% CHECK OVERLAPPING HEADS %%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  pred overlapping-terms i:term, i:term.
-  overlapping-terms uvar _ :- !.
-  overlapping-terms _ uvar :- !.
-  overlapping-terms X X :- name X.
-  overlapping-terms (app X) (app Y) :- !, std.forall2 X Y overlapping-terms.
-  overlapping-terms (lam X) (lam Y) :- !, pi x\ overlapping-terms (X x) (Y x).
-  overlapping-terms (const X) (const X) :- !.
-  overlapping-terms (cdata X) (cdata X) :- !.
+  { % OVERLAP CHECK
+    pred overlapping-terms i:term, i:term.
+    overlapping-terms uvar _ :- !.
+    overlapping-terms _ uvar :- !.
+    overlapping-terms X X :- name X.
+    overlapping-terms (app X) (app Y) :- !, std.forall2 X Y overlapping-terms.
+    overlapping-terms (lam X) (lam Y) :- !, pi x\ overlapping-terms (X x) (Y x).
+    overlapping-terms (const X) (const X) :- !.
+    overlapping-terms (cdata X) (cdata X) :- !.
 
-  pred overlapping-head.aux i:modes, i:list term, i:list term.
-  overlapping-head.aux [] [] [].
-  overlapping-head.aux [M|Ms] [A|As] [B|Bs]  :- get-head-mode M true, !,
-    overlapping-terms A B, overlapping-head.aux Ms As Bs.
-  overlapping-head.aux [_|Ms] [_|As] [_|Bs] :- overlapping-head.aux Ms As Bs.
+    pred overlapping-head.aux i:modes, i:list term, i:list term.
+    overlapping-head.aux [] [] [].
+    overlapping-head.aux [M|Ms] [A|As] [B|Bs]  :- get-head-mode M true, !,
+      overlapping-terms A B, overlapping-head.aux Ms As Bs.
+    overlapping-head.aux [_|Ms] [_|As] [_|Bs] :- overlapping-head.aux Ms As Bs.
 
-  pred overlapping-head i:term, i:term. % Takes 2 heads
-  overlapping-head (app[A|As]) (app[B|Bs]) :- !,
-    head-symbol A Ahs, head-symbol B Bhs, Ahs = Bhs, !,
-    get-mode-safe A As M,
-    overlapping-head.aux M As Bs, !.
-  overlapping-head A B :- halt "[overlapping-head] uncaught branch" A B.
+    pred overlapping-head i:term, i:term. % Takes 2 heads
+    overlapping-head (app[A|As]) (app[B|Bs]) :- !,
+      head-symbol A Ahs, head-symbol B Bhs, Ahs = Bhs, !,
+      get-mode-safe A As M,
+      overlapping-head.aux M As Bs, !.
+    overlapping-head A B :- halt "[overlapping-head] uncaught branch" A B.
 
-  pred cut-in-antecedent i:list term. % Takes the body
-  cut-in-antecedent L :- mem= L @CUT, !.
+    pred cut-in-antecedent i:list term. % Takes the body
+    cut-in-antecedent L :- mem= L @CUT, !.
 
-  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  %%%%%%%%%%%%%%%%%% CHECK FUNCTIONAL BODY %%%%%%%%%%%%%%%%%%%%
-  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  % [partition-cut L A B] if L = [p1, ..., pm, !, pn, ..., po] then
-  %                          A = [p1, ..., pm] and B = [pn, ..., po]
-  pred partition-cut i:list term, o:list term, o:list term.
-  partition-cut [] [] [] :- !.
-  partition-cut [@CUT|L] [] L :- !.
-  partition-cut [A|B] [A|As] Bs :- partition-cut B As Bs. 
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%% CHECK FUNCTIONAL BODY %%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % [partition-cut L A B] if L = [p1, ..., pm, !, pn, ..., po] then
+    %                          A = [p1, ..., pm] and B = [pn, ..., po]
+    pred partition-cut i:list term, o:list term, o:list term.
+    partition-cut [] [] [] :- !.
+    partition-cut [@CUT|L] [] L :- !.
+    partition-cut [A|B] [A|As] Bs :- partition-cut B As Bs. 
 
-  pred split-functional-ctx i:list term, o:list term, o:list term.
-  split-functional-ctx L Bef Aft :- 
-    partition-cut {std.rev L} A B,
-    std.rev B Bef, std.rev A Aft, !.
-  split-functional-ctx _ _ _ :- halt "[split-functional-ctx] should not fail...".
-
-  namespace old1 {
-    /* Here we check that all the premise of the body are functional
-     * and that all hyps do not break functionality
-     */
-    % THIS IS UNUSED, IN FAVOUR OF functional-dependecies
-    pred functional-premise i:term.
-    % BASE CASES
-    functional-premise (cdata _) :- !.
-    functional-premise (const _) :- !.
-    functional-premise (uvar) :- halt "[functional-premise] found uvar..." {loc1}.
-    % APP CASES
-    functional-premise (app [@PI, lam B]) :- !, pi x\ functional-premise (B x).
-    functional-premise (app [@SIGMA, lam B]) :- !, functional-premise (B X_).
-    functional-premise (app [@IMPL, Hyp | Body]) :-
-      head-symbol Hyp HypH, is-functional (const HypH) _, !,
-      % here the hyp is declared functional, then we check it for funcitonality 
-      Clause = clause {loc1} [] Hyp,
-      std.findall (pred-map HypH _) ClausesL,
-      std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
-      pred-map HypH Clause =>  (
-        check-functionality-clause-clauses Clause Clauses,
-        std.forall Body functional-premise).
-    functional-premise (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
-      std.forall Body functional-premise.
-    functional-premise (app [@COMMA|L]) :- !, std.forall L functional-premise.
-    functional-premise (app [const C | _]) :- % The premise is functional
-      is-functional (const C) _L, !. % TODO: take into account _L...
-    functional-premise (app [(const _ as H) | L]) :- % The premise mode are all input
-      std.forall {get-mode-safe H L} (x\ get-head-mode x true), !.
-    functional-premise A :- halt "[functional-premise] uncaught branch" A {loc1}.
-
-    pred functional-body i:list term.
-    % ALL PREMISES AFTER THE LAST CUT SHOULD BE FUNCTIONAL
-    functional-body L :- % PROPOSITION 3.4
-      split-functional-ctx L Bef_ Aft, 
-      std.forall Aft functional-premise.
+    pred split-functional-ctx i:list term, o:list term, o:list term.
+    split-functional-ctx L Bef Aft :- 
+      partition-cut {std.rev L} A B,
+      std.rev B Bef, std.rev A Aft, !.
+    split-functional-ctx _ _ _ :- halt "[split-functional-ctx] should not fail...".
   }
 
-  namespace old2 {
-    pred set-var-functional-output i:mode, i:term.
-    set-var-functional-output M T :- get-head-mode M false, !, % The output mode set T to functional
-      (pi X\ copy (uvar as X) _ :- !, X = func tt) =>
-      (pi X\ copy (func X) _ :- !, X = tt) => copy T _.
-    set-var-functional-output _ _.
 
-    pred set-vars-non-functional i:term.
-    set-vars-non-functional T :-
-      (pi X Y\ copy (uvar as X) _ :- !, X = func Y) => copy T _.
+  %%
+  %% FUNCTIONAL BODY
+  %%
+  { % FUNCTIONAL BODY
+    namespace old1 {
+      /* Here we check that all the premise of the body are functional
+      * and that all hyps do not break functionality
+      */
+      % THIS IS UNUSED, IN FAVOUR OF functional-dependecies
+      pred functional-premise i:term.
+      % BASE CASES
+      functional-premise (cdata _) :- !.
+      functional-premise (const _) :- !.
+      functional-premise (uvar) :- halt "[functional-premise] found uvar..." {loc1}.
+      % APP CASES
+      functional-premise (app [@PI, lam B]) :- !, pi x\ functional-premise (B x).
+      functional-premise (app [@SIGMA, lam B]) :- !, functional-premise (B X_).
+      functional-premise (app [@IMPL, Hyp | Body]) :-
+        head-symbol Hyp HypH, is-functional (const HypH) _, !,
+        % here the hyp is declared functional, then we check it for funcitonality 
+        Clause = clause {loc1} [] Hyp,
+        std.findall (pred-map HypH _) ClausesL,
+        std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
+        pred-map HypH Clause =>  (
+          check-functionality-clause-clauses Clause Clauses,
+          std.forall Body functional-premise).
+      functional-premise (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
+        std.forall Body functional-premise.
+      functional-premise (app [@COMMA|L]) :- !, std.forall L functional-premise.
+      functional-premise (app [const C | _]) :- % The premise is functional
+        is-functional (const C) _L, !. % TODO: take into account _L...
+      functional-premise (app [(const _ as H) | L]) :- % The premise mode are all input
+        std.forall {get-mode-safe H L} (x\ get-head-mode x true), !.
+      functional-premise A :- halt "[functional-premise] uncaught branch" A {loc1}.
 
-    pred functional-dependencies i:term. 
-      /* THIS CHECK CLAUSES BEFORE AND AFTER BANG
-       * enhancement of previous functional-premises
-       * in particular if a atom is functional, its output are set to functional, too.
-       * if the atom is not functional the output are set to maybe-functional
-       * a clause is functional if all of its output position are set to functional
-       * or are flexible
-       * However, this assumption is no more true in this case:
-       *   i o      o    i o
-       * f X Y :- q Y, r X Y. 
-       * Where: f and r are functional
-       * The problem comes out if we have the query
-       * (pi X\ r X X) => q 1 => q 2 => q Y, f X Y.
-       * It is not true that Y is functionally determined by f
-       */
+      pred functional-body i:list term.
+      % ALL PREMISES AFTER THE LAST CUT SHOULD BE FUNCTIONAL
+      functional-body L :- % PROPOSITION 3.4
+        split-functional-ctx L Bef_ Aft, 
+        std.forall Aft functional-premise.
+    }
+
+    namespace old2 {
+      pred all-funct.
+
+      pred set-var-functional-output i:mode, i:term.
+      set-var-functional-output M T :- get-head-mode M false, !, % The output mode set T to functional
+        (pi X\ copy (uvar as X) _ :- !, X = func tt) =>
+        (pi X\ copy (func X) _ :- !, X = tt) => copy T _.
+      set-var-functional-output _ _.
+
+      pred set-vars-non-functional i:term.
+      set-vars-non-functional T :-
+        (pi X Y\ copy (uvar as X) _ :- !, X = func Y) => copy T _.
+
+      pred functional-dependencies i:term. 
+        /* THIS CHECK CLAUSES BEFORE AND AFTER BANG
+        * enhancement of previous functional-premises
+        * in particular if a atom is functional, its output are set to functional, too.
+        * if the atom is not functional the output are set to maybe-functional
+        * a clause is functional if all of its output position are set to functional
+        * or are flexible
+        * However, this assumption is no more true in this case:
+        *   i o      o    i o
+        * f X Y :- q Y, r X Y. 
+        * Where: f and r are functional
+        * The problem comes out if we have the query
+        * (pi X\ r X X) => q 1 => q 2 => q Y, f X Y.
+        * It is not true that Y is functionally determined by f
+        */
+      % BASE CASES
+      functional-dependencies (cdata _) :- !.
+      functional-dependencies (const _) :- !.
+      functional-dependencies (func  _) :- !.
+      functional-dependencies (uvar) :- halt "[functional-dependencies] found uvar..." {loc1}.
+      % APP CASES
+      functional-dependencies (app [@PI, lam B]) :- !, pi x\ functional-dependencies (B x).
+      functional-dependencies (app [@SIGMA, lam B]) :- !, functional-dependencies (B X_).
+      functional-dependencies (app [@IMPL, Hyp | Body]) :- % Hyp if functional
+        head-symbol Hyp HypH, is-functional (const HypH) _, !,
+        % here the hyp is declared functional, then we check it for funcitonality 
+        Clause = clause {loc1} [] Hyp,
+        std.findall (pred-map HypH _) ClausesL,
+        std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
+        pred-map HypH Clause =>  (
+          check-functionality-clause-clauses Clause Clauses,
+          std.forall Body functional-dependencies).
+      functional-dependencies (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
+        std.forall Body functional-dependencies.
+      functional-dependencies (app [@COMMA|L]) :- !, std.forall L functional-dependencies.
+      functional-dependencies (app [(const Cs as C) | L]) :- % The premise is functional
+        (all-funct; is-functional (const Cs) _FL), !, % TODO: _FL should be taken into account
+        std.forall2 {get-mode-safe C L} L set-var-functional-output.
+      functional-dependencies (app [(const _) | L]) :- !, % The premise is not functional
+        std.forall L set-vars-non-functional.
+      functional-dependencies A :- halt "[functional-dependencies] uncaught branch" A {loc1}.
+
+      pred functional-body i:term, i:list term.
+      functional-body H L :- % PROPOSITION 3.4
+        split-functional-ctx L Bef Aft,
+        head-symbol H HS,
+        all-funct => std.forall Bef functional-dependencies,
+        current-pred HS => std.forall Aft functional-dependencies,
+        not(head-is-functional H),
+        halt "[head-is-functional] the head of" {pp H} "cannot be guess to be functional..." {loc1}.
+      functional-body _ _.
+    }
+
+    pred set-var-functional-all i:term.
+    set-var-functional-all T :-
+      loc1 Loc,
+      Msg is ("Functional premise called with non functional argument\n" ^ {std.any->string Loc}),
+      (pi X\ copy (func ff) _ :- halt Msg) =>
+      (pi X\ copy (uvar as X) _ :- !, X = func tt) => copy T _.
+
+    pred set-vars-non-functional-hard i:term.
+    set-vars-non-functional-hard T :-
+      loc1 Loc,
+      Msg is ("Non functional premise produces a non functional value for is a functional place " ^ {pp T} ^ "\n" ^ {std.any->string Loc}),
+      (pi X\ copy (func tt) _ :- halt Msg) =>
+      (pi X\ copy (uvar as X) _ :- !, X = func ff) => copy T _.
+
+    pred functional-dependencies1 i:term.
     % BASE CASES
-    functional-dependencies (cdata _) :- !.
-    functional-dependencies (const _) :- !.
-    functional-dependencies (func  _) :- !.
-    functional-dependencies (uvar) :- halt "[functional-dependencies] found uvar..." {loc1}.
+    functional-dependencies1 (cdata _) :- !.
+    functional-dependencies1 (const _) :- !.
+    functional-dependencies1 (uvar as X) :- is-functional X _, !.
+    functional-dependencies1 (uvar) :- print "[functional-dependencies1] WARNING found uvar..." {loc1}.
     % APP CASES
-    functional-dependencies (app [@PI, lam B]) :- !, pi x\ functional-dependencies (B x).
-    functional-dependencies (app [@SIGMA, lam B]) :- !, functional-dependencies (B X_).
-    functional-dependencies (app [@IMPL, Hyp | Body]) :- % Hyp if functional
+    functional-dependencies1 (app [@PI, lam B]) :- !, pi x\ functional-dependencies1 (B x).
+    functional-dependencies1 (app [@SIGMA, lam B]) :- !, functional-dependencies1 (B X_).
+    functional-dependencies1 (app [@IMPL, Hyp | Body]) :- % Hyp if functional
       head-symbol Hyp HypH, is-functional (const HypH) _, !,
       % here the hyp is declared functional, then we check it for funcitonality 
       Clause = clause {loc1} [] Hyp,
@@ -831,95 +899,32 @@ namespace functionality {
       std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
       pred-map HypH Clause =>  (
         check-functionality-clause-clauses Clause Clauses,
-        std.forall Body functional-dependencies).
-    functional-dependencies (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
-      std.forall Body functional-dependencies.
-    functional-dependencies (app [@COMMA|L]) :- !, std.forall L functional-dependencies.
-    functional-dependencies (app [(const Cs as C) | L]) :- % The premise is functional
-      (all-funct; is-functional (const Cs) _FL), !, % TODO: _FL should be taken into account
-      std.forall2 {get-mode-safe C L} L set-var-functional-output.
-    functional-dependencies (app [(const _) | L]) :- !, % The premise is not functional
-      std.forall L set-vars-non-functional.
-    functional-dependencies A :- halt "[functional-dependencies] uncaught branch" A {loc1}.
+        std.forall Body functional-dependencies1).
+    functional-dependencies1 (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
+      std.forall Body functional-dependencies1.
+    functional-dependencies1 (app [@COMMA|L]) :- !, std.forall L functional-dependencies1.
+    functional-dependencies1 (app [const C | L]) :- % The premise is functional
+      is-functional (const C) _X, !, std.forall L set-var-functional-all. % TODO: _X should be used
+    functional-dependencies1 (app [const C | L]) :- % The premise is functional
+      is-functional-variadic C, !, std.forall L set-var-functional-all. % TODO: _X should be used
+    functional-dependencies1 (app [const _ | L]) :- !, % The premise is not functional
+      std.forall L set-vars-non-functional-hard.
+    functional-dependencies1 A :- halt "[functional-dependencies1] uncaught branch" A {loc1}.
+
+    pred head-is-functional i:term.
+    head-is-functional T :- 
+      (copy (func uvar) _ :- !, fail) => 
+      (copy (func ff) _ :- !, fail) => copy T _.
 
     pred functional-body i:term, i:list term.
     functional-body H L :- % PROPOSITION 3.4
-      split-functional-ctx L Bef Aft,
+      split-functional-ctx L Bef_ Aft,
       head-symbol H HS,
-      all-funct => std.forall Bef functional-dependencies,
-      current-pred HS => std.forall Aft functional-dependencies,
+      current-pred HS => std.forall Aft functional-dependencies1,
       not(head-is-functional H),
       halt "[head-is-functional] the head of" {pp H} "cannot be guess to be functional..." {loc1}.
     functional-body _ _.
   }
-
-  %%
-  %% FUNCTIONAL DEPENDENCIES
-  %%
-
-  pred set-var-functional-all i:term.
-  set-var-functional-all T :-
-    loc1 Loc,
-    Msg is ("Functional premise called with non functional argument\n" ^ {std.any->string Loc}),
-    (pi X\ copy (func ff) _ :- halt Msg) =>
-    (pi X\ copy (uvar as X) _ :- !, X = func tt) => copy T _.
-
-  pred set-vars-non-functional-hard i:term.
-  set-vars-non-functional-hard T :-
-    loc1 Loc,
-    Msg is ("Non functional premise produces a non functional value for is a functional place " ^ {pp T} ^ "\n" ^ {std.any->string Loc}),
-    (pi X\ copy (func tt) _ :- halt Msg) =>
-    (pi X\ copy (uvar as X) _ :- !, X = func ff) => copy T _.
-
-  pred functional-dependencies1 i:term.
-  % BASE CASES
-  functional-dependencies1 (cdata _) :- !.
-  functional-dependencies1 (const _) :- !.
-  functional-dependencies1 (func  _) :- !.
-  functional-dependencies1 (uvar as X) :- is-functional X _, !.
-  functional-dependencies1 (uvar) :- print "[functional-dependencies1] WARNING found uvar..." {loc1}.
-  % APP CASES
-  functional-dependencies1 (app [@PI, lam B]) :- !, pi x\ functional-dependencies1 (B x).
-  functional-dependencies1 (app [@SIGMA, lam B]) :- !, functional-dependencies1 (B X_).
-  functional-dependencies1 (app [@IMPL, Hyp | Body]) :- % Hyp if functional
-    head-symbol Hyp HypH, is-functional (const HypH) _, !,
-    % here the hyp is declared functional, then we check it for funcitonality 
-    Clause = clause {loc1} [] Hyp,
-    std.findall (pred-map HypH _) ClausesL,
-    std.map ClausesL (x\r\ pred-map _ r = x) Clauses,
-    pred-map HypH Clause =>  (
-      check-functionality-clause-clauses Clause Clauses,
-      std.forall Body functional-dependencies1).
-  functional-dependencies1 (app [@IMPL, Hyp_ | Body]) :- !, % Hyp_ is not declared functional: ignore it
-    std.forall Body functional-dependencies1.
-  functional-dependencies1 (app [@COMMA|L]) :- !, std.forall L functional-dependencies1.
-  functional-dependencies1 (app [const C | L]) :- % The premise is functional
-    is-functional (const C) _X, !, std.forall L set-var-functional-all. % TODO: _X should be used
-  functional-dependencies1 (app [const C | L]) :- % The premise is functional
-    is-functional-variadic C, !, std.forall L set-var-functional-all. % TODO: _X should be used
-  functional-dependencies1 (app [const _ | L]) :- !, % The premise is not functional
-    std.forall L set-vars-non-functional-hard.
-  functional-dependencies1 A :- halt "[functional-dependencies1] uncaught branch" A {loc1}.
-
-  pred all-funct.
-
-  pred functional-body i:term, i:list term.
-
-  pred head-is-functional i:term.
-  head-is-functional T :- 
-    (copy (func uvar) _ :- !, fail) => 
-    (copy (func ff) _ :- !, fail) => copy T _.
-
-  functional-body H L :- % PROPOSITION 3.4
-    split-functional-ctx L Bef_ Aft,
-    head-symbol H HS,
-    % all-funct => std.forall Bef functional-dependencies1,
-    % print "==========================",
-    % print H L,
-    current-pred HS => std.forall Aft functional-dependencies1,
-    not(head-is-functional H),
-    halt "[head-is-functional] the head of" {pp H} "cannot be guess to be functional..." {loc1}.
-  functional-body _ _.
 
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%% MAIN %%%%%%%%%%%%%%%%%%%%%%%%%%%%
