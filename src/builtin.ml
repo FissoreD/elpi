@@ -1051,7 +1051,8 @@ X == Y :- same_term X Y.
   LPCode {|
 % [if C T E] picks the first success of C then runs T (never E).
 % if C has no success it runs E.
-pred if i:prop, i:prop, i:prop.
+:functional
+pred if i:prop, i:(:functional pred), i:(:functional pred).
 if B T _ :- B, !, T.
 if _ _ E :- E.
 

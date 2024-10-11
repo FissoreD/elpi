@@ -2770,6 +2770,8 @@ let pairc    = D.Global_symbols.declare_global_symbol "pr"
 let modefoc  = D.Global_symbols.declare_global_symbol "mode-fo"
 let modehoc  = D.Global_symbols.declare_global_symbol "mode-ho"
 
+let functionality = D.Global_symbols.declare_global_symbol "functionality"
+
 let mkQApp ~on_type l =
   let c = if on_type then tappc else appc in
   App(c,R.list_to_lp_list l,[])
@@ -2971,7 +2973,13 @@ let term_of_ast ~depth state text =
  state, R.move ~argsdepth ~from:depth ~to_:depth env t
 ;;
 
-let is_functional = function TPred (b,_) -> b | _ -> false
+let bool2elpi = function true -> Const truec | false -> Const falsec
+
+let rec funcpred2elpi = function 
+  | TPred (b,ag) -> App (functionality, bool2elpi b, funcargs2elpi ag) 
+  | _ -> funcpred2elpi (TPred (false, [])) and
+funcargs2elpi l = [List.map (fun (_,x) -> funcpred2elpi x) l |> R.list_to_lp_list]
+
 
 let static_check ~exec ~checker:(state,program)
   ({ WithMain.types; type_abbrevs; modes; initial_depth; compiler_state } as q) =
@@ -2987,7 +2995,12 @@ let static_check ~exec ~checker:(state,program)
         let ttypet = unfold_type_abbrevs ~is_typeabbrev:false ~compiler_state initial_depth type_abbrevs ttype 0 in
         let st, ttypet = quote_pretype time ~compiler_state st ttypet in
         state := st;
-        if is_functional ttype.ttype then functionality := c :: !functionality;
+        begin
+          match ttype.ttype with
+          | TPred (true, ag) -> (* Adding the functional predicate *)
+              functionality := App (pairc, c, funcargs2elpi ag) :: !functionality;
+          | _ -> ();
+        end;
         App(colonc,c, [close_w_binder forallc ttypet ttype.tamap])) lst
     in
     !state, l :: tlist, !functionality

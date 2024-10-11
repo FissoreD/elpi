@@ -13,33 +13,40 @@
 
 namespace std {
 
+:functional
 pred fatal-error i:string.
 :name "default-fatal-error"
 fatal-error Msg :- halt Msg.
 
+:functional
 pred fatal-error-w-data i:string, i:A.
 :name "default-fatal-error-w-data"
 fatal-error-w-data Msg Data :- halt Msg ":" Data.
 
+:functional
 pred debug-print i:string, i:A.
 :name "default-debug-print"
 debug-print Msg Data :- print Msg Data.
 
 %  -- Errors, Debugging, Hacks --
 
+:functional
 pred ignore-failure! i:prop.
 ignore-failure! P :- P, !.
 ignore-failure! _.
 
+:functional
 pred once i:prop.
 once P :- P, !.
 
 % [assert! C M] takes the first success of C or fails with message M 
+:functional
 pred assert! i:prop, i:string.
 assert! Cond Msg :- (Cond ; fatal-error-w-data Msg Cond), !.
 
 % [assert-ok! C M] like assert! but the last argument of the predicate must
 % be a diagnostic that is printed after M in case it is not ok
+:functional
 pred assert-ok! i:(pred o:diagnostic), i:string.
 assert-ok! Cond Msg :- Cond Diagnostic, !, (Diagnostic = ok ; Diagnostic = error S, fatal-error-w-data Msg S), !.
 assert-ok! _ Msg :- fatal-error-w-data Msg "no diagnostic returned".
@@ -53,6 +60,7 @@ spy P :- trace.counter "run" NR, if (not(NR = 0)) (debug-print "run=" NR) true,
 spy P :- debug-print "---->>---- fail: " P, fail.
 
 % [spy! P] traces the first call to P without leaving a choice point
+:functional
 pred spy! i:prop.
 spy! P :- trace.counter "run" NR, if (not(NR = 0)) (debug-print "run=" NR) true,
          debug-print "----<<---- enter: " P,
@@ -61,27 +69,33 @@ spy! P :- trace.counter "run" NR, if (not(NR = 0)) (debug-print "run=" NR) true,
 spy! P :- debug-print "---->>---- fail: " P, fail.
 
 % to silence the type checker
+:functional
 pred unsafe-cast o:A, o:B.
 unsafe-cast X X.
 
 % -- List processing --
 
+:functional
 pred length i:list A, o:int.
 length [_|L] N :- length L N1, N is N1 + 1.
 length []    0.
 
+:functional
 pred rev i:list A, o:list A.
 rev L RL  :- rev.aux L []  RL.
 
+:functional
 pred rev.aux i:list A, i:list A, o:list A.
 rev.aux [X|XS] ACC R :- rev.aux XS [X|ACC] R.
 rev.aux [] L L.
 
+:functional
 pred last i:list A, o:A.
 last [] _ :- fatal-error "last on empty list".
 last [X] X :- !.
 last [_|XS] R :- last XS R.
 
+:functional
 pred append i:list A, i:list A, o:list A.
 append [X|XS] L [X|L1] :- append XS L L1 .
 append [] L L .
@@ -90,32 +104,38 @@ pred appendR o:list A, o:list A, o:list A.
 appendR [] L L.
 appendR [X|XS] L [X|L1] :- appendR XS L L1.
 
+:functional
 pred take i:int, i:list A, o:list A.
 take 0 _ [] :- !.
 take N [X|XS] [X|L] :- !, N1 is N - 1, take N1 XS L.
 take _ _ _ :- fatal-error "take run out of list items".
 
+:functional
 pred take-last i:int, i:list A, o:list A.
 take-last N L R :-
   length L M,
   D is M - N,
   drop D L R.
 
+:functional
 pred drop i:int, i:list A, o:list A.
 drop 0 L L :- !.
 drop N [_|XS] L :- !, N1 is N - 1, drop N1 XS L.
 drop _ _ _ :- fatal-error "drop run out of list items".
 
+:functional
 pred drop-last i:int, i:list A, o:list A.
 drop-last N L R :-
   length L M, I is M - N, take I L R.
 
+:functional
 pred split-at i:int, i:list A, o:list A, o:list A.
 split-at 0 L [] L :- !.
 split-at N [X|XS] [X|LN] LM :- !, N1 is N - 1, split-at N1 XS LN LM.
 split-at _ _ _ _ :- fatal-error "split-at run out of list items".
 
-pred fold i:list B, i:A, i:(pred i:B, i:A, o:A), o:A.
+% :functional
+pred fold i:list B, i:A, i:(:functional pred i:B, i:A, o:A), o:A.
 fold [] A _ A.
 fold [X|XS] A F R :- F X A A1, fold XS A1 F R.
 
@@ -172,6 +192,7 @@ omap none _ none.
 omap (some X) F (some Y) :- F X Y.
 
 % [nth N L X] picks in X the N-th element of L (L must be of length > N)
+:functional
 pred nth i:int, i:list A, o:A.
 nth 0 [X|_ ] R :- !, X = R.
 nth N [_|XS] R :- N > 0, !, N1 is N - 1, nth N1 XS R.
@@ -179,24 +200,32 @@ nth N _ _ :- N < 0, !, fatal-error "nth got a negative index".
 nth _ _ _ :- fatal-error "nth run out of list items".
 
 % [lookup L K V] sees L as a map from K to V
+:functional
 pred lookup i:list (pair A B), i:A, o:B.
 lookup [pr X Y|_] X Y.
 lookup [_|LS]       X Y :- lookup LS X Y.
 
 % [lookup! L K V] sees L as a map from K to V, stops at the first binding
+:functional
 pred lookup! i:list (pair A B), i:A, o:B.
 lookup! [pr X Y|_] X Y :- !.
 lookup! [_|LS]       X Y :- lookup! LS X Y.
 
 % [mem! L X] succeeds once if X occurs inside L 
+:functional
 pred mem! i:list A, o:A.
 mem! [X|_] X :- !.
 mem! [_|L] X :- mem! L X.
 
-% [mem L X] succeeds every time if X occurs inside L 
 pred mem i:list A, o:A.
 mem [X|_] X.
 mem [_|L] X :- mem L X.
+
+% [exists! L P] succeeds once for some X in L, if P X 
+:functional
+pred exists! i:list A, i:(pred i:A).
+exists [X|_] P :- P X, !.
+exists [_|L] P :- exists L P.
 
 pred exists i:list A, i:(pred i:A).
 exists [X|_] P :- P X.
