@@ -1,0 +1,17 @@
+pred q o:int.
+
+:functional 
+pred do i:(:functional pred).
+do X :- X.
+
+:functional
+pred p i:int, o:int.
+
+:functional
+pred x i:int, o:int.
+x 1 Y :- do (q X), Y = 3.
+x 2 Z :- p 3 Y, do (q Y), Z = 3.
+x 3 Y :- do (q Y), !.
+x 4 Y :- do (do (p 1 X)).
+
+main.

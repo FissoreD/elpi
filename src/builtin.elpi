@@ -70,7 +70,6 @@ stop :- halt.
 
 %  -- Evaluation --
 
-:functional
 pred (is) o:A, i:A.
 
 X is Y :- calc Y X.
@@ -759,8 +758,8 @@ mem [_|L] X :- mem L X.
 % [exists! L P] succeeds once for some X in L, if P X 
 :functional
 pred exists! i:list A, i:(pred i:A).
-exists [X|_] P :- P X, !.
-exists [_|L] P :- exists L P.
+exists! [X|_] P :- P X, !.
+exists! [_|L] P :- exists! L P.
 
 pred exists i:list A, i:(pred i:A).
 exists [X|_] P :- P X.

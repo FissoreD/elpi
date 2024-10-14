@@ -2771,6 +2771,9 @@ let modefoc  = D.Global_symbols.declare_global_symbol "mode-fo"
 let modehoc  = D.Global_symbols.declare_global_symbol "mode-ho"
 
 let functionality = D.Global_symbols.declare_global_symbol "functionality"
+let fpred = D.Global_symbols.declare_global_symbol "fpred"
+let nfpred = D.Global_symbols.declare_global_symbol "nfpred"
+let npred = D.Global_symbols.declare_global_symbol "npred"
 
 let mkQApp ~on_type l =
   let c = if on_type then tappc else appc in
@@ -2973,11 +2976,14 @@ let term_of_ast ~depth state text =
  state, R.move ~argsdepth ~from:depth ~to_:depth env t
 ;;
 
-let bool2elpi = function true -> Const truec | false -> Const falsec
+let rec get_last_arr = function TArr (_, b) -> get_last_arr b | a -> a
 
 let rec funcpred2elpi = function 
-  | TPred (b,ag) -> App (functionality, bool2elpi b, funcargs2elpi ag) 
-  | _ -> funcpred2elpi (TPred (false, [])) and
+  | TPred (true,ag) -> App (functionality, Const fpred, funcargs2elpi ag) 
+  | TPred (false,_) -> App (functionality, Const nfpred, funcargs2elpi []) 
+  | TConst p when p = D.Global_symbols.propc -> App (functionality, Const nfpred, funcargs2elpi [])
+  | TArr (_,l) -> funcpred2elpi (get_last_arr l)
+  | _ -> App (functionality, Const npred, funcargs2elpi [])  and
 funcargs2elpi l = [List.map (fun (_,x) -> funcpred2elpi x) l |> R.list_to_lp_list]
 
 

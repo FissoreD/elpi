@@ -1298,7 +1298,7 @@ module Calc = struct
     [
     LPDoc " -- Evaluation --";
 
-    LPCode ":functional\npred (is) o:A, i:A.";
+    LPCode "pred (is) o:A, i:A.";
     LPCode "X is Y :- calc Y X.";
   
     MLCode(Pred("calc",
