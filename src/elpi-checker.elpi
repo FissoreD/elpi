@@ -639,7 +639,7 @@ namespace functionality {
 
   macro @not-func :- functionality nfpred [].
   macro @not-funct :- functionality npred [].
-  macro @preserve-func :- functionality preserve [].
+  macro @preserve-func :- functionality _ [].
 
   % Add the name of functional predicates by hand
   pred is-functional i:term, o:list functionality.
@@ -664,7 +664,7 @@ namespace functionality {
   % A variable [v I B] has the identifier I (a unique integer),
   % The boolean B allows to know if I can be functionally determined by the 
   % clause
-  type v int -> bool -> term. 
+  type v int -> bool -> functionality -> term. 
 
   { % ERRORS MSG
     pred error-non-functional-head i:term.
@@ -754,7 +754,7 @@ namespace functionality {
       (LocP Loc :- !) => go-under-arg.aux Names T Cont.
 
     pred newv i:term.
-    newv T :- new_int Z, T = (v Z FRESH_).
+    newv T :- new_int Z, T = (v Z FunctionalDetermined_ Functionality_).
     
     pred var2v i:term.
     var2v T :- (pi X Y Z\ copy (uvar as X) _ :- !, newv X) => copy T _.
@@ -940,19 +940,25 @@ namespace functionality {
       pred suspend-functional-term i:term.
       suspend-functional-term T :- 
         print "Suspending" {pp T},
-        (pi X L\ fold (v _ (uvar as X)) L [X|L] :- !) => fold T [] VL,
+        (pi X L\ fold (v _ (uvar as X) _) L [X|L] :- !) => fold T [] VL,
         declare_constraint (progress-func-term T VL) VL.
 
       pred is-functional-call-arg i:term, i:functionality.
-      is-functional-call-arg A B :- print "Hello" {pp A} B, fail.
+      is-functional-call-arg A B :- print "Hello" A "FUNCTIONALITY IS" B, fail.
       is-functional-call-arg (const _) _ :- !.
-      is-functional-call-arg (v _ _) _ :- !. % TODO: how about this?
-      is-functional-call-arg (app [_ | L]) (functionality fpred LF) :- 
+      is-functional-call-arg (v X _ F) F' :- not (F = F'),
+        halt "Variable" X "has been set with functionality" F "and cannot be set to functionality" F'.
+      is-functional-call-arg (v _ _ F) F :- !.
+      is-functional-call-arg (app [const _ | L]) (functionality fpred LF) :- 
         std.length L Len1, std.length LF Len2, Len1 = Len2, !,
         std.spy(is-functional-call-list L LF).
       is-functional-call-arg (app [(const _ as H) | L]) (functionality fpred _) :- !,
         is-functional H LF,
         is-functional-call-list L LF.
+      is-functional-call-arg (app[(v X _ F)|L]) (functionality fpred F') :- not(F = F'),
+        halt "Variable" X "has been set with functionality" F "and cannot be set to functionality" F.
+      is-functional-call-arg (app[(v X _ F)|L]) (functionality fpred F) :- 
+        is-functional-call-list L F.
       is-functional-call-arg _ (functionality _ _) :- !.
 
       pred is-functional-call-list i:list term, i:list functionality.
@@ -972,6 +978,8 @@ namespace functionality {
         print "args list [" {pp-list Args} "] mode list" L "bb",
         is-functional-call-list Args L.
       is-functional-call (app [const C|_]) :- is-functional-variadic C, !.
+      is-functional-call (app [v _ _ (functionality _ F) | L]) :-
+        is-functional-call-list L F.
 
       pred loop-functional-premise-term i:term.
       loop-functional-premise-term (app [@PI, lam B]) :- !, pi x\ loop-functional-premise-term (B x).
@@ -981,8 +989,9 @@ namespace functionality {
       loop-functional-premise-term (app [const _ | _] as T) :-
         print "AA",
         std.spy(is-functional-call T), !, suspend-functional-term T.
-      loop-functional-premise-term (app [(v _ _) | _] as T) :- !,
-        is-functional-call T, !. 
+      loop-functional-premise-term (app [(v _ _ _) | _] as T) :- !,
+        print "MH",
+        std.spy!(is-functional-call T), !. 
       loop-functional-premise-term _.
 
 
@@ -993,9 +1002,9 @@ namespace functionality {
         loop-functional-premise Xs.
 
       pred loop-non-functional-premise-term i:term.
-      loop-non-functional-premise-term (v _ uvar as V) :- is-functional V _, !.
-      loop-non-functional-premise-term (v _ tt as V) :- is-functional V _, !.
-      loop-non-functional-premise-term (v _ _) :- !, error-non-functional-prop.
+      loop-non-functional-premise-term (v _ uvar _ as V) :- is-functional V _, !.
+      loop-non-functional-premise-term (v _ tt _ as V) :- is-functional V _, !.
+      loop-non-functional-premise-term (v _ _ _) :- !, error-non-functional-prop.
       loop-non-functional-premise-term (const _) :- !.
       % APP CASES
       loop-non-functional-premise-term (app [@PI, lam B]) :- !, pi x\ loop-non-functional-premise-term (B x).
@@ -1015,7 +1024,7 @@ namespace functionality {
 
       loop-non-functional-premise-term (app [const _ | _] as T) :-
         not (is-functional-call T), !, set-vars-non-functional-hard T.
-      loop-non-functional-premise-term (app [(v _ _) | _] as T) :- !, % The variable is functional
+      loop-non-functional-premise-term (app [(v _ _ _) | _] as T) :- !, % The variable is functional
         not (is-functional-call T), !, set-vars-non-functional-hard T.
       loop-non-functional-premise-term _ :- !.
 
@@ -1049,13 +1058,13 @@ namespace functionality {
     {
       pred set-var-functional-all i:term.
       set-var-functional-all T :-
-        (pi X\ copy (v _ ff) _ :- error-func-atom-non-func-arg) =>
-        (pi X\ copy (v _ X) _ :- X = tt, !) => copy T _.
+        (pi X\ copy (v _ ff _) _ :- error-func-atom-non-func-arg) =>
+        (pi X\ copy (v _ X _) _ :- X = tt, !) => copy T _.
 
       pred set-vars-non-functional-hard i:term.
       set-vars-non-functional-hard T :-
-        (pi X\ copy (v _ tt) _ :- error-func-atom-non-func-arg) =>
-        (pi X\ copy (v _ X) _ :- X = ff) => copy T _.
+        (pi X\ copy (v _ tt _) _ :- error-func-atom-non-func-arg) =>
+        (pi X\ copy (v _ X _) _ :- X = ff) => copy T _.
 
       pred functional-dependencies1 i:term.
       % BASE CASES
@@ -1064,14 +1073,14 @@ namespace functionality {
       
       % here some non-functional atom has set the variable non being uniquely 
       % determined
-      functional-dependencies1 (v _ ff) :- !, error-non-functional-prop.
+      functional-dependencies1 (v _ ff _) :- !, error-non-functional-prop.
 
       /* here the variable is functional and uniquely determined
       * for example, :functional pred do i:(:functional pred).
       *              do X :- X.
       */ 
-      functional-dependencies1 (v _ _ as V) :- is-functional V _, !.
-      functional-dependencies1 (v _ _) :- !, error-non-functional-prop.
+      functional-dependencies1 (v _ _ _ as V) :- is-functional V _, !.
+      functional-dependencies1 (v _ _ _) :- !, error-non-functional-prop.
       functional-dependencies1 (uvar) :- print "[functional-dependencies1] WARNING found uvar..." {loc1}.
       % APP CASES
       functional-dependencies1 (app [@PI, lam B]) :- !, pi x\ functional-dependencies1 (B x).
@@ -1095,7 +1104,7 @@ namespace functionality {
         if (C = "do") (print F "L:" L ) true,
         % TODO: forall i in L, functionality i = _F[i]
         std.forall L set-var-functional-all.
-      functional-dependencies1 (app [(v _ _ as V) | L]) :- !, % The variable is functional
+      functional-dependencies1 (app [(v _ _ _ as V) | L]) :- !, % The variable is functional
         is-functional V _F, !, 
         % TODO: forall i in L, functionality i = _F[i]
         std.forall L set-var-functional-all. 
@@ -1105,13 +1114,13 @@ namespace functionality {
       
       functional-dependencies1 (app [const _ | L]) :- !,
         std.forall L set-vars-non-functional-hard.
-      functional-dependencies1 (app [v _ _ | L]) :- !,
+      functional-dependencies1 (app [v _ _ _ | L]) :- !,
         std.forall L set-vars-non-functional-hard.
       
       functional-dependencies1 A :- halt "[functional-dependencies1] uncaught branch" A {loc1}.
 
       pred head-is-functional i:term.
-      head-is-functional T :- (copy (v _ ff) _ :- !, fail) => copy T _.
+      head-is-functional T :- (copy (v _ ff _) _ :- !, fail) => copy T _.
 
       pred add-functional-arguments-list i:list term, i:list functionality, o:list prop.
       add-functional-arguments-list [] [] [].
@@ -1121,7 +1130,7 @@ namespace functionality {
         add-functional-arguments-list L FL R.
       add-functional-arguments-list [const "discard" | L] [_ | FL] R :- !,
         add-functional-arguments-list L FL R.
-      add-functional-arguments-list [(v T _) | L] [functionality _ F | FL] [(pi x\ is-functional (v T x) F) | R] :- !,
+      add-functional-arguments-list [(v T _ _) | L] [functionality _ F | FL] [(pi x\ is-functional (v T x _) F) | R] :- !,
         add-functional-arguments-list L FL R.
       add-functional-arguments-list [T|_] [F|_] _ :- 
         halt "[add-functional-arguments-list] uncaught branch" T F {loc1}.
@@ -1162,7 +1171,7 @@ namespace functionality {
       add-functional-arguments Hd FuncArgs,
       head-symbol Hd HS,
       FuncArgs => current-pred HS => 
-        (pi X\ head-term (v _ _ as X) X :- !) => 
+        (pi X\ head-term (v _ _ _ as X) X :- !) => 
           std.spy!(loop-premise Aft),
       not(head-is-functional Hd),
       error-non-functional-head Hd.
@@ -1208,9 +1217,9 @@ namespace functionality {
     check-functionality Program :-
       program2pred_buckets Program {std.string.map.empty} ProgramProps ProgramClauses,
       (pi x\ copy (old2.func _ as x) x :- !) =>
-      (pi A\ fold (v _ _) A A :- !) =>
-      (pi x\ copy (v _ _ as x) x :- !) =>
-      (pi B\ pp (v _ ff) "non-func" :- !) =>
+      (pi A\ fold (v _ _ _) A A :- !) =>
+      (pi x\ copy (v _ _ _ as x) x :- !) =>
+      (pi B\ pp (v _ ff _) "non-func" :- !) =>
         ProgramProps => std.forall ProgramClauses check-functionality-list.
   }
 }
