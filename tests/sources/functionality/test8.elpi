@@ -9,8 +9,4 @@ q 1 1.
 % This fails, since the local rules unifies with `r 1 1`
 p 5 Y :- sigma X Y\ q X Y => q 1 Y.
 
-% Note that the following clause also fail even though the local premise
-% is instantiated to `q 2 Z` after the resolution of `q 2 z`
-% p 6 Z :- sigma X Y\ q X Y => q 2 Z.
-
 main.

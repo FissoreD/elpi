@@ -95,6 +95,7 @@ infix-op "=".
 infix-op "::".
 infix-op ":-".
 infix-op "=>".
+infix-op ",".
 
 pred pp i:term, o:string.
 pp (app [const C, HD | L]) R :- infix-op C, !, R is "(" ^ {pp HD} ^ " " ^ C ^ " " ^ {pp-list L} ^ ")".
@@ -921,7 +922,7 @@ namespace functionality {
       functional-body _ _.
     }
 
-    {
+    { % USING CONSTRAINTS
       pred progress-func-term i:term, i:list bool.
       progress-func-term T_ L :- 
         std.spy(std.exists! L (x\ not (var x), x = ff)), !,
@@ -955,10 +956,10 @@ namespace functionality {
       is-functional-call-arg (app [(const _ as H) | L]) (functionality fpred _) :- !,
         is-functional H LF,
         is-functional-call-list L LF.
-      is-functional-call-arg (app[(v X _ F)|L]) (functionality fpred F') :- not(F = F'),
+      is-functional-call-arg (app[(v X _ F)|_]) F' :- not(F = F'),
         halt "Variable" X "has been set with functionality" F "and cannot be set to functionality" F.
-      is-functional-call-arg (app[(v X _ F)|L]) (functionality fpred F) :- 
-        is-functional-call-list L F.
+      is-functional-call-arg (app[(v _ _ F)|L]) ((functionality fpred FL) as F) :- 
+        is-functional-call-list L FL.
       is-functional-call-arg _ (functionality _ _) :- !.
 
       pred is-functional-call-list i:list term, i:list functionality.
@@ -998,7 +999,7 @@ namespace functionality {
       pred loop-functional-premise i:list term.
       loop-functional-premise [].
       loop-functional-premise [X|Xs] :-
-        std.assert!(loop-functional-premise-term X) "[loop-functional-premise] should not fail",
+        std.ignore-failure! (loop-functional-premise-term X),
         loop-functional-premise Xs.
 
       pred loop-non-functional-premise-term i:term.
@@ -1055,7 +1056,7 @@ namespace functionality {
 
     }
 
-    {
+    { % OLD FUNCTIONALITY
       pred set-var-functional-all i:term.
       set-var-functional-all T :-
         (pi X\ copy (v _ ff _) _ :- error-func-atom-non-func-arg) =>
