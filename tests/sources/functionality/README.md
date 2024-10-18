@@ -33,3 +33,5 @@ test21.elpi: wrong-if: non-declared functional argument used in non functional c
 test23.elpi: similar to test14
 test24.elpi: ho output used in two different calls with different functionality relation
 test25.elpi: non functional ho output used to produce output of the rule
+test26.elpi: overlap with as operator
+test27.elpi: overlap with HO term in PF (B x) against (A x y)

@@ -420,6 +420,7 @@ macro @COMMA :- const ",".
 macro @PI :- const "pi".
 macro @SIGMA :- const "sigma".
 macro @IMPL :- const "=>".
+macro @AS :- const "as".
 
 pred head-symbol i:term, o:string.
 head-symbol uvar _ :- halt "NYI".
@@ -764,13 +765,23 @@ namespace functionality {
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%% CHECK OVERLAPPING HEADS %%%%%%%%%%%%%%%%%%
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  pred same-as i:term, i:term.
+  same-as A B :- A = B, !.
+  same-as A B :- halt "Found two non unifying terms" {pp A} "and" {pp B} "with same `as` variable".
+
   { % OVERLAP CHECK
     pred overlapping-terms i:term, i:term.
+    overlapping-terms (app[@AS,L,R]) T :- !, same-as L R, overlapping-terms R T. 
+    overlapping-terms T (app[@AS,L,R]) :- !, same-as L R, overlapping-terms T R. 
+    overlapping-terms (lam X) (lam Y) :- !, pi x\ overlapping-terms (X x) (Y x).
+    overlapping-terms (lam X) T :- !, pi x\ overlapping-terms (X x) T.
+    overlapping-terms X (lam T) :- !, pi x\ overlapping-terms X (T x).
     overlapping-terms uvar _ :- !.
     overlapping-terms _ uvar :- !.
     overlapping-terms X X :- name X.
+    overlapping-terms (app [uvar|Sc] as T1) T :- !, print"Uvar left" T1 T, prune V Sc, V = T.
+    overlapping-terms T (app [uvar|Sc]) :- !, print"Uvar right", prune V Sc, V = T.
     overlapping-terms (app X) (app Y) :- !, std.forall2 X Y overlapping-terms.
-    overlapping-terms (lam X) (lam Y) :- !, pi x\ overlapping-terms (X x) (Y x).
     overlapping-terms (const X) (const X) :- !.
     overlapping-terms (cdata X) (cdata X) :- !.
 
