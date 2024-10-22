@@ -955,19 +955,28 @@ namespace functionality {
         (pi X L\ fold (v _ (uvar as X) _) L [X|L] :- !) => fold T [] VL,
         declare_constraint (progress-func-term T VL) VL.
 
+      pred functionality-leq i:functionality, i:functionality.
+      functionality-leq (functionality _ _) (functionality nfpred _) :- !.
+      functionality-leq (functionality fpred A) (functionality fpred B) :- !,
+        std.forall2 A B functionality-leq.
+      functionality-leq (functionality npred _) (functionality npred _) :- !.
+      functionality-leq (functionality uvar _) (functionality _ _) :- !.
+      functionality-leq (functionality _ _) (functionality uvar _) :- !.
+
       pred is-functional-call-arg i:term, i:functionality.
       is-functional-call-arg A B :- print "Hello" A "FUNCTIONALITY IS" B, fail.
       is-functional-call-arg (const _) _ :- !.
       is-functional-call-arg (v X _ F) F' :- not (F = F'),
         halt "Variable" X "has been set with functionality" F "and cannot be set to functionality" F'.
       is-functional-call-arg (v _ _ F) F :- !.
-      is-functional-call-arg (app [const _ | L]) (functionality fpred LF) :- 
+      is-functional-call-arg (app [const HD | L]) (functionality fpred LF) :- 
+        is-functional (const HD) _,
         std.length L Len1, std.length LF Len2, Len1 = Len2, !,
         std.spy(is-functional-call-list L LF).
       is-functional-call-arg (app [(const _ as H) | L]) (functionality fpred _) :- !,
         is-functional H LF,
         is-functional-call-list L LF.
-      is-functional-call-arg (app[(v X _ F)|_]) F' :- not(F = F'),
+      is-functional-call-arg (app[(v X _ F)|_]) F' :- not(functionality-leq F F'),
         halt "Variable" X "has been set with functionality" F "and cannot be set to functionality" F.
       is-functional-call-arg (app[(v _ _ F)|L]) ((functionality fpred FL) as F) :- 
         is-functional-call-list L FL.
@@ -999,10 +1008,8 @@ namespace functionality {
       loop-functional-premise-term (app [@IMPL, Hyp_ | Body]) :- !, std.forall Body loop-functional-premise-term.
       loop-functional-premise-term (app [@COMMA|L]) :- !,  std.forall L loop-functional-premise-term.
       loop-functional-premise-term (app [const _ | _] as T) :-
-        print "AA",
         std.spy(is-functional-call T), !, suspend-functional-term T.
       loop-functional-premise-term (app [(v _ _ _) | _] as T) :- !,
-        print "MH",
         std.spy!(is-functional-call T), !. 
       loop-functional-premise-term _.
 

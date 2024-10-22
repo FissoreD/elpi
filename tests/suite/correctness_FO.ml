@@ -253,7 +253,7 @@ let () =
       Failure; Success; Failure; Failure; Success; (*15*)
       Success; Success; Failure; Failure; Success; (*20*)
       Failure; Success; Failure; Failure; Failure; (*25*)
-      Failure; Failure; Success|] in
+      Failure; Failure; Success; Success; Failure|] in
   for i = 0 to Array.length status - 1 do
     let name = Printf.sprintf "functionality/test%d.elpi" (i+1) in
     let descr = Printf.sprintf "functionality%d" (i+1) in
